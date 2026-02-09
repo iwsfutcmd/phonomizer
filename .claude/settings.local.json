@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run dev:*)",
+      "Bash(npm run check:*)",
+      "Bash(npm test:*)",
+      "Bash(curl:*)",
+      "Bash(chmod:*)",
+      "Bash(node scripts/generate-phonemes.js:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}

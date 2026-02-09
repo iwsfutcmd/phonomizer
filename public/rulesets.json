@@ -1,0 +1,30 @@
+[
+  {
+    "id": "sem-pro_arb",
+    "name": "Proto-Semitic → Arabic",
+    "rulesFile": "/rules/sem-pro_arb.phono",
+    "sourcePhonemes": "/phonemes/sem-pro.phonemes",
+    "targetPhonemes": "/phonemes/arb.phonemes"
+  },
+  {
+    "id": "sem-pro_hbo",
+    "name": "Proto-Semitic → Biblical Hebrew",
+    "rulesFile": "/rules/sem-pro_hbo.phono",
+    "sourcePhonemes": "/phonemes/sem-pro.phonemes",
+    "targetPhonemes": "/phonemes/hbo.phonemes"
+  },
+  {
+    "id": "sem-pro_syc",
+    "name": "Proto-Semitic → Syriac",
+    "rulesFile": "/rules/sem-pro_syc.phono",
+    "sourcePhonemes": "/phonemes/sem-pro.phonemes",
+    "targetPhonemes": "/phonemes/syc.phonemes"
+  },
+  {
+    "id": "sem-pro_gez",
+    "name": "Proto-Semitic → Ge'ez",
+    "rulesFile": "/rules/sem-pro_gez.phono",
+    "sourcePhonemes": "/phonemes/sem-pro.phonemes",
+    "targetPhonemes": "/phonemes/gez.phonemes"
+  }
+]
