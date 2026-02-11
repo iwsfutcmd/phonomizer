@@ -1,6 +1,36 @@
 import type { Rule } from '../types';
 
 /**
+ * Tokenizes a word into phoneme tokens using greedy longest-match
+ */
+function tokenize(word: string, phonemes: string[]): string[] {
+  if (word === '') return [];
+
+  const sortedPhonemes = [...phonemes].sort((a, b) => b.length - a.length);
+  const tokens: string[] = [];
+  let pos = 0;
+
+  while (pos < word.length) {
+    let matched = false;
+
+    for (const phoneme of sortedPhonemes) {
+      if (word.substring(pos, pos + phoneme.length) === phoneme) {
+        tokens.push(phoneme);
+        pos += phoneme.length;
+        matched = true;
+        break;
+      }
+    }
+
+    if (!matched) {
+      throw new Error(`Cannot tokenize: character(s) at position ${pos} ("${word[pos]}") do not match any phoneme`);
+    }
+  }
+
+  return tokens;
+}
+
+/**
  * Applies phonological rules to a word in forward direction
  *
  * Rules are applied sequentially. Each rule transforms the entire word
@@ -18,8 +48,8 @@ export function applyRules(
   sourcePhonemes: string[],
   targetPhonemes: string[]
 ): string {
-  // Validate that word only uses source phonemes
-  validateWord(word, sourcePhonemes, 'source');
+  // Tokenize the word into phonemes
+  let tokens = tokenize(word, sourcePhonemes);
 
   // Validate that rules use valid phonemes
   for (const rule of rules) {
@@ -31,66 +61,58 @@ export function applyRules(
     }
   }
 
-  let result = word;
-
+  // Apply each rule to the token sequence
   for (const rule of rules) {
-    result = applyRule(result, rule);
+    tokens = applyRuleToTokens(tokens, rule, sourcePhonemes);
   }
 
-  return result;
+  return tokens.join('');
 }
 
 /**
- * Applies a single rule to a word, respecting context if present
+ * Applies a single rule to a token array, respecting context if present
  */
-function applyRule(word: string, rule: Rule): string {
+function applyRuleToTokens(tokens: string[], rule: Rule, phonemes: string[]): string[] {
   const { from, to, leftContext, rightContext } = rule;
+  const result: string[] = [];
 
-  // If no context, use simple replacement
-  if (!leftContext && !rightContext) {
-    return word.replaceAll(from, to);
-  }
-
-  // Context-sensitive replacement
-  let result = word;
-  let searchPos = 0;
-
-  while (searchPos < result.length) {
-    const foundIndex = result.indexOf(from, searchPos);
-    if (foundIndex === -1) break;
-
-    // Check left context
-    let leftMatch = true;
-    if (leftContext !== undefined) {
-      if (leftContext === '#') {
-        // Must be at word beginning
-        leftMatch = foundIndex === 0;
-      } else {
-        // Must be preceded by leftContext
-        const beforeIndex = foundIndex - leftContext.length;
-        leftMatch = beforeIndex >= 0 && result.substring(beforeIndex, foundIndex) === leftContext;
+  for (let i = 0; i < tokens.length; i++) {
+    if (tokens[i] === from) {
+      // Check left context
+      let leftMatch = true;
+      if (leftContext !== undefined) {
+        if (leftContext === '#') {
+          // Must be at word beginning
+          leftMatch = i === 0;
+        } else {
+          // Must be preceded by leftContext
+          leftMatch = i > 0 && tokens[i - 1] === leftContext;
+        }
       }
-    }
 
-    // Check right context
-    let rightMatch = true;
-    if (rightContext !== undefined) {
-      if (rightContext === '#') {
-        // Must be at word end
-        rightMatch = foundIndex + from.length === result.length;
-      } else {
-        // Must be followed by rightContext
-        const afterIndex = foundIndex + from.length;
-        rightMatch = result.substring(afterIndex, afterIndex + rightContext.length) === rightContext;
+      // Check right context
+      let rightMatch = true;
+      if (rightContext !== undefined) {
+        if (rightContext === '#') {
+          // Must be at word end
+          rightMatch = i === tokens.length - 1;
+        } else {
+          // Must be followed by rightContext
+          rightMatch = i < tokens.length - 1 && tokens[i + 1] === rightContext;
+        }
       }
-    }
 
-    // Apply replacement if context matches
-    if (leftMatch && rightMatch) {
-      result = result.substring(0, foundIndex) + to + result.substring(foundIndex + from.length);
-      searchPos = foundIndex + to.length;
+      // Apply replacement if context matches
+      if (leftMatch && rightMatch) {
+        if (to !== '') {
+          result.push(to);
+        }
+        // If to is empty, we delete the phoneme (don't push anything)
+      } else {
+        result.push(tokens[i]);
+      }
     } else {
-      searchPos = foundIndex + from.length;
+      result.push(tokens[i]);
     }
   }
 

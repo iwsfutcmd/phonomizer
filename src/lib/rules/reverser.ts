@@ -1,6 +1,36 @@
 import type { Rule } from '../types';
 
 /**
+ * Tokenizes a word into phoneme tokens using greedy longest-match
+ */
+function tokenize(word: string, phonemes: string[]): string[] {
+  if (word === '') return [];
+
+  const sortedPhonemes = [...phonemes].sort((a, b) => b.length - a.length);
+  const tokens: string[] = [];
+  let pos = 0;
+
+  while (pos < word.length) {
+    let matched = false;
+
+    for (const phoneme of sortedPhonemes) {
+      if (word.substring(pos, pos + phoneme.length) === phoneme) {
+        tokens.push(phoneme);
+        pos += phoneme.length;
+        matched = true;
+        break;
+      }
+    }
+
+    if (!matched) {
+      throw new Error(`Cannot tokenize: character(s) at position ${pos} ("${word[pos]}") do not match any phoneme`);
+    }
+  }
+
+  return tokens;
+}
+
+/**
  * Applies phonological rules in reverse to find all possible source words
  * that could have produced the given target word.
  *
@@ -20,11 +50,8 @@ export function reverseRules(
   sourcePhonemes: string[],
   targetPhonemes: string[]
 ): string[] {
-  // Validate that target word only uses target phonemes
-  validateWord(word, targetPhonemes, 'target');
-
-  // Start with the target word
-  let possibilities: Set<string> = new Set([word]);
+  // Tokenize the target word
+  let possibilityTokens: Set<string> = new Set([JSON.stringify(tokenize(word, targetPhonemes))]);
 
   // Apply rules in reverse order
   for (let i = rules.length - 1; i >= 0; i--) {
@@ -32,18 +59,22 @@ export function reverseRules(
     const newPossibilities: Set<string> = new Set();
 
     // For each current possibility, find all ways to reverse this rule
-    for (const current of possibilities) {
-      const reversed = reverseOneRule(current, rule, sourcePhonemes);
-      reversed.forEach(r => newPossibilities.add(r));
+    for (const current of possibilityTokens) {
+      const tokens = JSON.parse(current) as string[];
+      const reversed = reverseOneRule(tokens, rule, sourcePhonemes);
+      reversed.forEach(r => newPossibilities.add(JSON.stringify(r)));
     }
 
-    possibilities = newPossibilities;
+    possibilityTokens = newPossibilities;
   }
 
-  // Filter to only valid source words
-  const validPossibilities = Array.from(possibilities).filter(p => {
+  // Convert token arrays back to strings and filter to only valid source words
+  const validPossibilities = Array.from(possibilityTokens).map(p => {
+    const tokens = JSON.parse(p) as string[];
+    return tokens.join('');
+  }).filter(p => {
     try {
-      validateWord(p, sourcePhonemes, 'source');
+      tokenize(p, sourcePhonemes);
       return true;
     } catch {
       return false;
@@ -54,63 +85,56 @@ export function reverseRules(
 }
 
 /**
- * Reverses a single rule application
+ * Reverses a single rule application on token arrays
  *
- * Given a word that has had rule applied to it, find all possible
- * pre-images (words before the rule was applied).
+ * Given a token array that has had rule applied to it, find all possible
+ * pre-images (token arrays before the rule was applied).
  *
- * For rule "a > x", if we have "xyx", we need to find all positions
+ * For rule "a > x", if we have ["x", "y", "x"], we need to find all positions
  * where "x" appears and consider that each "x" could have been:
  * 1. Transformed from "a" by this rule
  * 2. Was already "x" before this rule (not transformed)
  *
  * We generate ALL combinations and filter invalid ones at the end.
  */
-function reverseOneRule(word: string, rule: Rule, sourcePhonemes: string[]): string[] {
+function reverseOneRule(tokens: string[], rule: Rule, sourcePhonemes: string[]): string[][] {
   const { from, to, leftContext, rightContext } = rule;
 
   // Special case: deletion rule (from -> empty)
   // Reversing deletion is insertion, which can happen at any position
   if (to === '') {
     // For now, skip this case - it's complex and needs special handling
-    return [word];
+    return [tokens];
   }
 
-  // Find all positions where the target pattern appears
+  // Find all positions where the target phoneme appears
   const positions: number[] = [];
-  let index = 0;
 
-  while (index < word.length) {
-    const foundIndex = word.indexOf(to, index);
-    if (foundIndex === -1) break;
-
-    // Check if this position matches the context
-    if (matchesContext(word, foundIndex, to.length, leftContext, rightContext)) {
-      positions.push(foundIndex);
+  for (let i = 0; i < tokens.length; i++) {
+    if (tokens[i] === to) {
+      // Check if this position matches the context
+      if (matchesContextTokens(tokens, i, leftContext, rightContext)) {
+        positions.push(i);
+      }
     }
-
-    index = foundIndex + to.length;
   }
 
-  // If target doesn't appear in word, no reversal needed
+  // If target doesn't appear in tokens, no reversal needed
   if (positions.length === 0) {
-    return [word];
+    return [tokens];
   }
 
   // Generate all possible combinations: each occurrence can be replaced or left as-is
-  const results: string[] = [];
+  const results: string[][] = [];
   const numCombinations = Math.pow(2, positions.length);
 
   for (let mask = 0; mask < numCombinations; mask++) {
-    let result = word;
-    let offset = 0;
+    const result = [...tokens];
 
     for (let i = 0; i < positions.length; i++) {
       if (mask & (1 << i)) {
         // Replace this occurrence with the source
-        const pos = positions[i] + offset;
-        result = result.substring(0, pos) + from + result.substring(pos + to.length);
-        offset += from.length - to.length;
+        result[positions[i]] = from;
       }
     }
 
@@ -121,12 +145,11 @@ function reverseOneRule(word: string, rule: Rule, sourcePhonemes: string[]): str
 }
 
 /**
- * Checks if a position in a word matches the given context
+ * Checks if a position in a token array matches the given context
  */
-function matchesContext(
-  word: string,
+function matchesContextTokens(
+  tokens: string[],
   position: number,
-  length: number,
   leftContext: string | undefined,
   rightContext: string | undefined
 ): boolean {
@@ -137,8 +160,7 @@ function matchesContext(
       if (position !== 0) return false;
     } else {
       // Must be preceded by leftContext
-      const beforeIndex = position - leftContext.length;
-      if (beforeIndex < 0 || word.substring(beforeIndex, position) !== leftContext) {
+      if (position === 0 || tokens[position - 1] !== leftContext) {
         return false;
       }
     }
@@ -148,43 +170,14 @@ function matchesContext(
   if (rightContext !== undefined) {
     if (rightContext === '#') {
       // Must be at word end
-      if (position + length !== word.length) return false;
+      if (position !== tokens.length - 1) return false;
     } else {
       // Must be followed by rightContext
-      const afterIndex = position + length;
-      if (word.substring(afterIndex, afterIndex + rightContext.length) !== rightContext) {
+      if (position === tokens.length - 1 || tokens[position + 1] !== rightContext) {
         return false;
       }
     }
   }
 
   return true;
-}
-
-/**
- * Validates that a word only uses phonemes from the given set
- * Uses greedy longest-match algorithm
- */
-function validateWord(word: string, phonemes: string[], stage: 'source' | 'target'): void {
-  if (word === '') return;
-
-  // Sort phonemes by length (longest first) for greedy matching
-  const sortedPhonemes = [...phonemes].sort((a, b) => b.length - a.length);
-
-  let pos = 0;
-  while (pos < word.length) {
-    let matched = false;
-
-    for (const phoneme of sortedPhonemes) {
-      if (word.substring(pos, pos + phoneme.length) === phoneme) {
-        pos += phoneme.length;
-        matched = true;
-        break;
-      }
-    }
-
-    if (!matched) {
-      throw new Error(`Invalid ${stage} word: character(s) at position ${pos} ("${word[pos]}") do not match any phoneme in the ${stage} phoneme set`);
-    }
-  }
 }

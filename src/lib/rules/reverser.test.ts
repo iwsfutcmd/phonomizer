@@ -76,7 +76,7 @@ describe('reverseRules (backward)', () => {
     const rules: Rule[] = [{ from: 'a', to: 'x' }];
     expect(() => {
       reverseRules('xyz', rules, ['a'], ['x']);
-    }).toThrow('Invalid target word');
+    }).toThrow('Cannot tokenize');
   });
 
   it('should filter out invalid source results', () => {

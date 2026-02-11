@@ -44,7 +44,7 @@ describe('applyRules (forward)', () => {
     const rules: Rule[] = [{ from: 'a', to: 'x' }];
     expect(() => {
       applyRules('abc', rules, ['a', 'b'], ['x']);
-    }).toThrow('Invalid source word');
+    }).toThrow('Cannot tokenize');
   });
 
   it('should throw error if rule source not in source phoneme set', () => {
@@ -83,5 +83,17 @@ describe('applyRules (forward)', () => {
     const rules: Rule[] = [{ from: 'w', to: 'j', leftContext: '#' }];
     const result = applyRules('awa', rules, ['w', 'a'], ['j', 'a', 'w']);
     expect(result).toBe('awa'); // Middle w is not at word boundary
+  });
+
+  it('should correctly handle multi-char phonemes that start with same characters', () => {
+    // This tests the fix for the issue where "ɬ > ʃ" was incorrectly matching "ɬʼ"
+    // before "ɬʼ > dˤ" could be applied. With tokenization, "ɬʼ" is treated as
+    // a single token, so the "ɬ > ʃ" rule won't match it.
+    const rules: Rule[] = [
+      { from: 'ɬ', to: 'ʃ' },
+      { from: 'ɬʼ', to: 'dˤ' }
+    ];
+    const result = applyRules('ʔrɬʼ', rules, ['ʔ', 'r', 'ɬ', 'ɬʼ'], ['ʔ', 'r', 'ʃ', 'dˤ']);
+    expect(result).toBe('ʔrdˤ'); // ɬʼ should become dˤ, not ʃʼ
   });
 });

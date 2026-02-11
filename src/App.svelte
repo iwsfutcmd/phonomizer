@@ -18,9 +18,14 @@
   let inputWord = $state('');
   let sourcePhonemes = $state('');
   let targetPhonemes = $state('');
-  let mode = $state<'forward' | 'backward'>('forward');
+  let mode = $state<'forward' | 'backward' | 'cognates'>('forward');
   let result = $state<string | string[]>('');
   let error = $state('');
+
+  // For cognates mode
+  let sourceLanguage = $state('arb');
+  let targetLanguage = $state('hbo');
+  let sourceLanguagePhonemes = $state('');
 
   // Load available rulesets on mount
   onMount(async () => {
@@ -30,9 +35,18 @@
         rulesets = await response.json();
         // Load the default ruleset
         await loadRuleset(selectedRulesetId);
+        // Load initial source language phonemes for cognates mode
+        await loadSourceLanguagePhonemes(sourceLanguage);
       }
     } catch (e) {
       console.error('Failed to load rulesets:', e);
+    }
+  });
+
+  // Reload source language phonemes when source language changes
+  $effect(() => {
+    if (mode === 'cognates' && rulesets.length > 0) {
+      loadSourceLanguagePhonemes(sourceLanguage);
     }
   });
 
@@ -79,28 +93,140 @@
       .filter(p => p.length > 0);
   }
 
-  function handleApply() {
+  async function handleApply() {
     error = '';
     result = '';
 
     try {
-      const rules = parseRules(rulesText);
-      const sourcePhonemeSet = parsePhonemes(sourcePhonemes);
-      const targetPhonemeSet = parsePhonemes(targetPhonemes);
-
-      if (mode === 'forward') {
-        result = applyRules(inputWord, rules, sourcePhonemeSet, targetPhonemeSet);
+      if (mode === 'cognates') {
+        result = await findCognates(inputWord, sourceLanguage, targetLanguage);
       } else {
-        result = reverseRules(inputWord, rules, sourcePhonemeSet, targetPhonemeSet);
+        const rules = parseRules(rulesText);
+        const sourcePhonemeSet = parsePhonemes(sourcePhonemes);
+        const targetPhonemeSet = parsePhonemes(targetPhonemes);
+
+        if (mode === 'forward') {
+          result = applyRules(inputWord, rules, sourcePhonemeSet, targetPhonemeSet);
+        } else {
+          result = reverseRules(inputWord, rules, sourcePhonemeSet, targetPhonemeSet);
+        }
       }
     } catch (e) {
       error = e instanceof Error ? e.message : 'An error occurred';
     }
   }
 
+  async function findCognates(word: string, sourceLang: string, targetLang: string): Promise<string[]> {
+    // Find rulesets for both languages
+    const sourceRuleset = rulesets.find(r => r.id.endsWith(`_${sourceLang}`));
+    const targetRuleset = rulesets.find(r => r.id.endsWith(`_${targetLang}`));
+
+    if (!sourceRuleset) {
+      throw new Error(`No ruleset found for source language: ${sourceLang}`);
+    }
+    if (!targetRuleset) {
+      throw new Error(`No ruleset found for target language: ${targetLang}`);
+    }
+
+    // Extract common ancestor (should be the same for both)
+    const sourceAncestor = sourceRuleset.id.split('_')[0];
+    const targetAncestor = targetRuleset.id.split('_')[0];
+
+    if (sourceAncestor !== targetAncestor) {
+      throw new Error(`Languages do not share a common ancestor: ${sourceAncestor} vs ${targetAncestor}`);
+    }
+
+    // Load source ruleset
+    const [sourceRulesResp, sourcePhonResp, ancestorPhonResp] = await Promise.all([
+      fetch(sourceRuleset.rulesFile),
+      fetch(sourceRuleset.targetPhonemes),
+      fetch(sourceRuleset.sourcePhonemes)
+    ]);
+
+    const sourceRulesText = await sourceRulesResp.text();
+    const sourcePhons = await sourcePhonResp.text();
+    const ancestorPhons = await ancestorPhonResp.text();
+
+    const sourceRules = parseRules(sourceRulesText);
+    const sourcePhonSet = parsePhonemes(sourcePhons);
+    const ancestorPhonSet = parsePhonemes(ancestorPhons);
+
+    // Step 1: Reverse source language rules to get proto-forms
+    const protoForms = reverseRules(word, sourceRules, ancestorPhonSet, sourcePhonSet);
+
+    // Load target ruleset
+    const [targetRulesResp, targetPhonResp] = await Promise.all([
+      fetch(targetRuleset.rulesFile),
+      fetch(targetRuleset.targetPhonemes)
+    ]);
+
+    const targetRulesText = await targetRulesResp.text();
+    const targetPhons = await targetPhonResp.text();
+
+    const targetRules = parseRules(targetRulesText);
+    const targetPhonSet = parsePhonemes(targetPhons);
+
+    // Step 2: Apply target language rules to each proto-form
+    const cognates = new Set<string>();
+    for (const protoForm of protoForms) {
+      try {
+        const targetForm = applyRules(protoForm, targetRules, ancestorPhonSet, targetPhonSet);
+
+        // Validate that the result only uses target phonemes
+        let isValid = true;
+        const sortedTargetPhons = [...targetPhonSet].sort((a, b) => b.length - a.length);
+        let pos = 0;
+        while (pos < targetForm.length && isValid) {
+          let matched = false;
+          for (const phoneme of sortedTargetPhons) {
+            if (targetForm.substring(pos, pos + phoneme.length) === phoneme) {
+              pos += phoneme.length;
+              matched = true;
+              break;
+            }
+          }
+          if (!matched) {
+            isValid = false;
+          }
+        }
+
+        if (isValid) {
+          cognates.add(targetForm);
+        }
+      } catch (e) {
+        // Skip invalid proto-forms
+        continue;
+      }
+    }
+
+    return Array.from(cognates).sort();
+  }
+
+  // Load source language phonemes for cognates mode
+  async function loadSourceLanguagePhonemes(lang: string) {
+    const ruleset = rulesets.find(r => r.id.endsWith(`_${lang}`));
+    if (!ruleset) return;
+
+    try {
+      const response = await fetch(ruleset.targetPhonemes);
+      if (response.ok) {
+        sourceLanguagePhonemes = await response.text();
+      }
+    } catch (e) {
+      console.error('Failed to load source language phonemes:', e);
+    }
+  }
+
   // Get non-ASCII phonemes for the current mode
   function getNonAsciiPhonemes(): string[] {
-    const phonemeSet = mode === 'forward' ? sourcePhonemes : targetPhonemes;
+    let phonemeSet: string;
+
+    if (mode === 'cognates') {
+      phonemeSet = sourceLanguagePhonemes;
+    } else {
+      phonemeSet = mode === 'forward' ? sourcePhonemes : targetPhonemes;
+    }
+
     const phonemeList = parsePhonemes(phonemeSet);
     return phonemeList.filter(p => /[^\x00-\x7F]/.test(p));
   }
@@ -145,18 +271,45 @@
 
     <!-- Controls Column -->
     <div class="controls-column">
-      <div class="ruleset-selector">
-        <label for="ruleset">
-          <strong>Ruleset</strong>
-        </label>
-        <select id="ruleset" bind:value={selectedRulesetId} onchange={handleRulesetChange}>
-          {#each rulesets as ruleset}
-            <option value={ruleset.id}>{ruleset.name}</option>
-          {/each}
-        </select>
-      </div>
+      {#if mode === 'cognates'}
+        <div class="language-selectors">
+          <div class="language-selector">
+            <label for="source-lang">
+              <strong>Source Language</strong>
+            </label>
+            <select id="source-lang" bind:value={sourceLanguage}>
+              <option value="arb">Arabic</option>
+              <option value="hbo">Biblical Hebrew</option>
+              <option value="syc">Syriac</option>
+              <option value="gez">Ge'ez</option>
+            </select>
+          </div>
 
-      <div class="phoneme-sets">
+          <div class="language-selector">
+            <label for="target-lang">
+              <strong>Target Language</strong>
+            </label>
+            <select id="target-lang" bind:value={targetLanguage}>
+              <option value="arb">Arabic</option>
+              <option value="hbo">Biblical Hebrew</option>
+              <option value="syc">Syriac</option>
+              <option value="gez">Ge'ez</option>
+            </select>
+          </div>
+        </div>
+      {:else}
+        <div class="ruleset-selector">
+          <label for="ruleset">
+            <strong>Ruleset</strong>
+          </label>
+          <select id="ruleset" bind:value={selectedRulesetId} onchange={handleRulesetChange}>
+            {#each rulesets as ruleset}
+              <option value={ruleset.id}>{ruleset.name}</option>
+            {/each}
+          </select>
+        </div>
+
+        <div class="phoneme-sets">
         <div class="phoneme-input">
           <label for="source-phonemes">
             <strong>Source Phonemes</strong>
@@ -183,10 +336,11 @@
           />
         </div>
       </div>
+      {/if}
 
       <div class="word-section">
         <label for="word">
-          <strong>{mode === 'forward' ? 'Source Word' : 'Target Word'}</strong>
+          <strong>{mode === 'cognates' ? 'Word in Source Language' : mode === 'forward' ? 'Source Word' : 'Target Word'}</strong>
         </label>
         <input
           id="word"
@@ -227,10 +381,16 @@
           >
             ← Backward
           </button>
+          <button
+            class:active={mode === 'cognates'}
+            onclick={() => mode = 'cognates'}
+          >
+            ↔ Cognates
+          </button>
         </div>
 
         <button class="apply-btn" onclick={handleApply}>
-          Apply Rules
+          {mode === 'cognates' ? 'Find Cognates' : 'Apply Rules'}
         </button>
       </div>
     </div>
@@ -327,6 +487,17 @@
     flex-direction: column;
   }
 
+  .language-selectors {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+
+  .language-selector {
+    display: flex;
+    flex-direction: column;
+  }
+
   select {
     width: 100%;
     padding: 0.75rem;
@@ -334,6 +505,7 @@
     border-radius: 4px;
     font-size: 1rem;
     background: white;
+    color: #333;
     cursor: pointer;
     box-sizing: border-box;
   }
