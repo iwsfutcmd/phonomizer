@@ -95,10 +95,16 @@ export function reverseRules(
  * 1. Transformed from "a" by this rule
  * 2. Was already "x" before this rule (not transformed)
  *
+ * For rule "a j > e" (multi-phoneme source), if we have ["e", "y"], we consider
+ * that "e" could have been transformed from the sequence ["a", "j"].
+ *
  * We generate ALL combinations and filter invalid ones at the end.
  */
 function reverseOneRule(tokens: string[], rule: Rule, sourcePhonemes: string[]): string[][] {
   const { from, to, leftContext, rightContext } = rule;
+
+  // Parse source as potentially multi-phoneme sequence
+  const fromSequence = from.split(/\s+/);
 
   // Special case: deletion rule (from -> empty)
   // Reversing deletion is insertion, which can happen at any position
@@ -129,12 +135,17 @@ function reverseOneRule(tokens: string[], rule: Rule, sourcePhonemes: string[]):
   const numCombinations = Math.pow(2, positions.length);
 
   for (let mask = 0; mask < numCombinations; mask++) {
-    const result = [...tokens];
+    const result: string[] = [];
+    let offset = 0; // Track how indices shift due to replacements
 
-    for (let i = 0; i < positions.length; i++) {
-      if (mask & (1 << i)) {
-        // Replace this occurrence with the source
-        result[positions[i]] = from;
+    for (let i = 0; i < tokens.length; i++) {
+      const posIndex = positions.indexOf(i);
+
+      if (posIndex !== -1 && (mask & (1 << posIndex))) {
+        // Replace this occurrence with the source sequence
+        result.push(...fromSequence);
+      } else {
+        result.push(tokens[i]);
       }
     }
 

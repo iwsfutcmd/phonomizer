@@ -172,3 +172,16 @@ Examples:
 - `k > g / n _;` — k becomes g after n
 
 **Important**: Context-sensitive rules only apply when the context matches. Rules are processed sequentially, so context is checked against the current state of the word as each rule is applied.
+
+### Multi-Phoneme Sequences
+
+Format: `phoneme1 phoneme2 > target;`
+
+The source can be a sequence of phonemes (separated by spaces) that contract into a single phoneme:
+
+Examples:
+- `a j > e;` — the sequence "aj" becomes "e"
+- `a w > o;` — the sequence "aw" becomes "o"
+- `a j > e / _ #;` — "aj" becomes "e" at word end only
+
+**Important**: Multi-phoneme sequences are matched greedily and can be combined with context-sensitive rules.

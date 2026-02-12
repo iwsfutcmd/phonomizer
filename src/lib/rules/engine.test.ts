@@ -96,4 +96,24 @@ describe('applyRules (forward)', () => {
     const result = applyRules('ʔrɬʼ', rules, ['ʔ', 'r', 'ɬ', 'ɬʼ'], ['ʔ', 'r', 'ʃ', 'dˤ']);
     expect(result).toBe('ʔrdˤ'); // ɬʼ should become dˤ, not ʃʼ
   });
+
+  it('should handle multi-phoneme source (sequence contraction)', () => {
+    // Test rule like "a j > e" (two phonemes become one)
+    const rules: Rule[] = [{ from: 'a j', to: 'e' }];
+    const result = applyRules('baj', rules, ['b', 'a', 'j'], ['b', 'e']);
+    expect(result).toBe('be'); // 'a' followed by 'j' becomes 'e'
+  });
+
+  it('should handle multi-phoneme source with multiple occurrences', () => {
+    const rules: Rule[] = [{ from: 'a j', to: 'e' }];
+    const result = applyRules('bajkaj', rules, ['b', 'a', 'j', 'k'], ['b', 'e', 'k']);
+    expect(result).toBe('beke'); // Both 'aj' sequences become 'e'
+  });
+
+  it('should handle multi-phoneme source with context', () => {
+    // Test rule like "a j > e / _ #" (aj becomes e at word end)
+    const rules: Rule[] = [{ from: 'a j', to: 'e', rightContext: '#' }];
+    const result = applyRules('bajkaj', rules, ['b', 'a', 'j', 'k'], ['b', 'a', 'j', 'e', 'k']);
+    expect(result).toBe('bajke'); // Only final 'aj' becomes 'e'
+  });
 });
