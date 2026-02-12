@@ -10,7 +10,10 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(gh repo create:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(npm run generate-rulesets:*)",
+      "Bash(git rm:*)",
+      "Bash(git restore:*)"
     ]
   }
 }
