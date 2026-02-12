@@ -250,3 +250,87 @@ a > [x y];           # ERROR: Class in target requires class in source
 ```
 
 **Note**: Classes are expanded at parse time, so the Rule Engine and Reverser work with the expanded individual rules. This keeps the core logic simple while providing syntactic convenience.
+
+### Variables
+
+Format: `NAME = value;`
+
+Variables allow you to define reusable phonemes, classes, or other variables that can be referenced throughout your ruleset. Variables are defined at the top of the file and are substituted at parse time.
+
+**Basic variable definition**:
+```
+C = [p t k];       # Define a consonant class
+V = [a e i o u];   # Define a vowel class
+X = th;            # Define a single phoneme
+```
+
+**Using variables in rules**:
+```
+C = [p t k];
+V = [a e i];
+
+C > V;             # Expands to: p>a, t>e, k>i (paired mapping)
+```
+
+**Variables in all positions**:
+```
+C = [p t];
+V = [a e];
+N = [m n];
+
+C > V / N _;       # Use in source, target, and context
+                   # Expands to 4 rules: p>a/m_, p>a/n_, t>e/m_, t>e/n_
+```
+
+**Variable references (nested classes)**:
+```
+VOICELESS = [p t k];
+VOICED = [b d g];
+STOPS = [VOICELESS VOICED];    # Reference other variables
+
+STOPS > x;         # Expands to all stops becoming x
+```
+
+**Multi-level references**:
+```
+A = [x y];
+B = A;
+C = B;
+C > z;             # Works: x>z, y>z
+```
+
+**Features**:
+- Variables are substituted at parse time
+- Variables can contain single phonemes, classes, or references to other variables
+- Nested class notation `[VAR1 VAR2]` flattens referenced variables
+- No naming restrictions - any token can be a variable name
+- Undefined tokens are treated as phonemes (no errors for undefined variables)
+- Circular references are detected and reported as errors
+
+**Examples**:
+```
+# Define phoneme sets
+P = [p t k];
+F = [f θ s];
+VOICELESS = [P F];      # Nested reference
+
+# Use in rules
+VOICELESS > ;           # Delete all voiceless consonants
+
+# Variables with context
+V = [a e i];
+C = [p t k];
+V > V / C _;            # Context-sensitive rule
+
+# Paired mapping
+STOPS = [p t k];
+FRICATIVES = [f θ s];
+STOPS > FRICATIVES;     # p>f, t>θ, k>s
+```
+
+**Validation rules**:
+- Circular references like `A = B; B = A;` will throw an error
+- Self-references like `A = A;` will throw an error
+- All other variable usage follows the same rules as phoneme classes
+
+**Note**: Variables are a syntactic convenience that expand at parse time. The Rule Engine and Reverser work with the fully expanded rules, keeping the core logic simple.

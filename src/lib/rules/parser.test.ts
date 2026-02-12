@@ -206,4 +206,187 @@ describe('parseRules', () => {
       ]);
     });
   });
+
+  describe('variables', () => {
+    it('should parse simple variable definition and usage', () => {
+      const rules = parseRules('C = [p t k];\nC > x;');
+      expect(rules).toEqual([
+        { from: 'p', to: 'x' },
+        { from: 't', to: 'x' },
+        { from: 'k', to: 'x' }
+      ]);
+    });
+
+    it('should handle single phoneme variables', () => {
+      const rules = parseRules('X = a;\nX > b;');
+      expect(rules).toEqual([{ from: 'a', to: 'b' }]);
+    });
+
+    it('should allow variables in target position with single source', () => {
+      // When target is a class and source is not, this should error
+      // But if we want this to work, we'd need to change semantics
+      // For now, this is an invalid rule according to class syntax
+      expect(() => {
+        parseRules('V = [a e i];\nx > V;');
+      }).toThrow('Class in target requires class in source');
+    });
+
+    it('should allow variables in context', () => {
+      const rules = parseRules('C = [p t];\nV = [a e];\na > b / C _ V;');
+      expect(rules).toEqual([
+        { from: 'a', to: 'b', leftContext: 'p', rightContext: 'a' },
+        { from: 'a', to: 'b', leftContext: 'p', rightContext: 'e' },
+        { from: 'a', to: 'b', leftContext: 't', rightContext: 'a' },
+        { from: 'a', to: 'b', leftContext: 't', rightContext: 'e' }
+      ]);
+    });
+
+    it('should handle variable references (nested classes)', () => {
+      const rules = parseRules(`
+        V1 = [a e];
+        V2 = [i o];
+        V = [V1 V2];
+        V > x;
+      `);
+      expect(rules).toEqual([
+        { from: 'a', to: 'x' },
+        { from: 'e', to: 'x' },
+        { from: 'i', to: 'x' },
+        { from: 'o', to: 'x' }
+      ]);
+    });
+
+    it('should handle deeply nested variable references', () => {
+      const rules = parseRules(`
+        A = [x y];
+        B = A;
+        C = B;
+        C > z;
+      `);
+      expect(rules).toEqual([
+        { from: 'x', to: 'z' },
+        { from: 'y', to: 'z' }
+      ]);
+    });
+
+    it('should detect circular references', () => {
+      expect(() => {
+        parseRules('A = B;\nB = A;\nA > x;');
+      }).toThrow('Circular reference');
+    });
+
+    it('should detect self-referential variables', () => {
+      expect(() => {
+        parseRules('A = A;\nA > x;');
+      }).toThrow('Circular reference');
+    });
+
+    it('should handle multi-character phonemes in variables', () => {
+      const rules = parseRules('F = [th sh];\nF > x;');
+      expect(rules).toEqual([
+        { from: 'th', to: 'x' },
+        { from: 'sh', to: 'x' }
+      ]);
+    });
+
+    it('should allow variables with paired class mapping', () => {
+      const rules = parseRules('C = [p t k];\nV = [b d g];\nC > V;');
+      expect(rules).toEqual([
+        { from: 'p', to: 'b' },
+        { from: 't', to: 'd' },
+        { from: 'k', to: 'g' }
+      ]);
+    });
+
+    it('should treat undefined tokens as phonemes', () => {
+      const rules = parseRules('a > b;');
+      expect(rules).toEqual([{ from: 'a', to: 'b' }]);
+    });
+
+    it('should allow variable names that look like phonemes', () => {
+      const rules = parseRules('a = [b c];\na > x;');
+      expect(rules).toEqual([
+        { from: 'b', to: 'x' },
+        { from: 'c', to: 'x' }
+      ]);
+    });
+
+    it('should handle deletion rules with variables', () => {
+      const rules = parseRules('X = a;\nX > ;');
+      expect(rules).toEqual([{ from: 'a', to: '' }]);
+    });
+
+    it('should allow comments mixed with variables', () => {
+      const rules = parseRules(`
+        # Define consonants
+        C = [p t k];
+        # Define vowels
+        V = [a e i];
+        # Apply rule
+        C > V;
+      `);
+      // Paired class mapping: p>a, t>e, k>i
+      expect(rules.length).toBe(3);
+      expect(rules).toEqual([
+        { from: 'p', to: 'a' },
+        { from: 't', to: 'e' },
+        { from: 'k', to: 'i' }
+      ]);
+    });
+
+    it('should handle variables in all rule positions simultaneously', () => {
+      const rules = parseRules(`
+        C = [p t];
+        V = [a e];
+        N = [m n];
+        C > V / N _;
+      `);
+      // Paired from/to (2 rules) × context combinations (2) = 4 rules
+      // p>a and t>e, each with leftContext m or n
+      expect(rules.length).toBe(4);
+      expect(rules).toEqual([
+        { from: 'p', to: 'a', leftContext: 'm', rightContext: undefined },
+        { from: 'p', to: 'a', leftContext: 'n', rightContext: undefined },
+        { from: 't', to: 'e', leftContext: 'm', rightContext: undefined },
+        { from: 't', to: 'e', leftContext: 'n', rightContext: undefined }
+      ]);
+    });
+
+    it('should handle nested classes directly (without variables)', () => {
+      const rules = parseRules('[[a b] [c d]] > x;');
+      expect(rules).toEqual([
+        { from: 'a', to: 'x' },
+        { from: 'b', to: 'x' },
+        { from: 'c', to: 'x' },
+        { from: 'd', to: 'x' }
+      ]);
+    });
+
+    it('should handle complex nested structures', () => {
+      const rules = parseRules(`
+        VOICELESS = [p t k];
+        VOICED = [b d g];
+        STOPS = [VOICELESS VOICED];
+        STOPS > x;
+      `);
+      expect(rules).toEqual([
+        { from: 'p', to: 'x' },
+        { from: 't', to: 'x' },
+        { from: 'k', to: 'x' },
+        { from: 'b', to: 'x' },
+        { from: 'd', to: 'x' },
+        { from: 'g', to: 'x' }
+      ]);
+    });
+
+    it('should not confuse variables with rule syntax', () => {
+      const rules = parseRules('a = b;\na > x;');
+      expect(rules).toEqual([{ from: 'b', to: 'x' }]);
+    });
+
+    it('should handle variables with special regex characters in names', () => {
+      const rules = parseRules('C+V = [a];\nC+V > x;');
+      expect(rules).toEqual([{ from: 'a', to: 'x' }]);
+    });
+  });
 });
