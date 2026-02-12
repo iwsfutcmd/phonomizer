@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { reverseRules } from './reverser';
+import { parseRules } from './parser';
 import type { Rule } from '../types';
 
 describe('reverseRules (backward)', () => {
@@ -121,5 +122,43 @@ describe('reverseRules (backward)', () => {
 
     // Middle 'j' stays as 'j' (not transformed by this context-sensitive rule)
     expect(result).toEqual(['aja']);
+  });
+
+  describe('phoneme class integration', () => {
+    it('should reverse class expansion: [a b] > c;', () => {
+      const rules = parseRules('[a b] > c;');
+      // Going backward: 'c' could have been 'a' or 'b'
+      const result = reverseRules('c', rules, ['a', 'b'], ['c']);
+      expect(result.sort()).toEqual(['a', 'b'].sort());
+    });
+
+    it('should reverse paired class mapping: [a b] > [x y];', () => {
+      const rules = parseRules('[a b] > [x y];');
+      // x must come from a, y must come from b
+      const result = reverseRules('xy', rules, ['a', 'b'], ['x', 'y']);
+      expect(result).toEqual(['ab']);
+    });
+
+    it('should reverse class with context', () => {
+      const rules = parseRules('a > b / [c d] _;');
+      // 'cb' could have been 'ca' (since a becomes b after c)
+      const result = reverseRules('cb', rules, ['a', 'c', 'd'], ['a', 'b', 'c', 'd']);
+      expect(result).toEqual(['ca']);
+    });
+
+    it('should generate all possibilities from class merger', () => {
+      const rules = parseRules('[a b c] > x;');
+      // 'xx' could have been any combination of a, b, c
+      const result = reverseRules('xx', rules, ['a', 'b', 'c'], ['x']);
+      // 3 * 3 = 9 combinations
+      expect(result.length).toBe(9);
+      expect(result.sort()).toEqual(['aa', 'ab', 'ac', 'ba', 'bb', 'bc', 'ca', 'cb', 'cc'].sort());
+    });
+
+    it('should handle multi-character phonemes in classes', () => {
+      const rules = parseRules('[th sh] > [θ ʃ];');
+      const result = reverseRules('θinkʃarp', rules, ['th', 'sh', 'i', 'n', 'k', 'a', 'r', 'p'], ['θ', 'ʃ', 'i', 'n', 'k', 'a', 'r', 'p']);
+      expect(result).toEqual(['thinksharp']);
+    });
   });
 });

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { applyRules } from './engine';
+import { parseRules } from './parser';
 import type { Rule } from '../types';
 
 describe('applyRules (forward)', () => {
@@ -136,5 +137,41 @@ describe('applyRules (forward)', () => {
     const rules: Rule[] = [{ from: 'a j', to: 'e i' }];
     const result = applyRules('baj', rules, ['b', 'a', 'j'], ['b', 'e', 'i']);
     expect(result).toBe('bei'); // 'aj' becomes 'ei'
+  });
+
+  describe('phoneme class integration', () => {
+    it('should apply expanded class rules: [a b] > c;', () => {
+      const rules = parseRules('[a b] > c;');
+      const result = applyRules('abc', rules, ['a', 'b', 'c'], ['c']);
+      expect(result).toBe('ccc'); // Both a and b become c
+    });
+
+    it('should apply paired class mapping: [a b] > [x y];', () => {
+      const rules = parseRules('[a b] > [x y];');
+      const result = applyRules('ab', rules, ['a', 'b'], ['x', 'y']);
+      expect(result).toBe('xy'); // a→x, b→y
+    });
+
+    it('should apply class with context', () => {
+      const rules = parseRules('a > b / [c d] _;');
+      const result1 = applyRules('ca', rules, ['a', 'c', 'd'], ['a', 'b', 'c', 'd']);
+      const result2 = applyRules('da', rules, ['a', 'c', 'd'], ['a', 'b', 'c', 'd']);
+      const result3 = applyRules('ea', rules, ['a', 'e', 'c', 'd'], ['a', 'b', 'e', 'c', 'd']);
+      expect(result1).toBe('cb'); // a becomes b after c
+      expect(result2).toBe('db'); // a becomes b after d
+      expect(result3).toBe('ea'); // a stays a after e (no match)
+    });
+
+    it('should handle multiple phonemes in class', () => {
+      const rules = parseRules('[a b c] > x;');
+      const result = applyRules('abc', rules, ['a', 'b', 'c'], ['x']);
+      expect(result).toBe('xxx'); // All merge to x
+    });
+
+    it('should apply multi-character phonemes in classes', () => {
+      const rules = parseRules('[th sh] > [θ ʃ];');
+      const result = applyRules('thinksharp', rules, ['th', 'i', 'n', 'k', 'sh', 'a', 'r', 'p'], ['θ', 'ʃ', 'i', 'n', 'k', 'a', 'r', 'p']);
+      expect(result).toBe('θinkʃarp');
+    });
   });
 });

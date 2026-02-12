@@ -196,3 +196,57 @@ Both the source and target can be sequences of phonemes (separated by spaces):
 - `a j > e / _ #;` — "aj" becomes "e" at word end only
 
 **Important**: Multi-phoneme sequences are matched greedily and can be combined with context-sensitive rules.
+
+### Phoneme Classes
+
+Format: `[phoneme1 phoneme2] > target;`
+
+Phoneme classes allow you to write compact rules that expand to multiple individual rules at parse time. Classes are denoted by square brackets `[ ]` with space-separated phonemes inside.
+
+**Simple class expansion** (class → single):
+- `[a b] > c;` — expands to `a > c;` and `b > c;`
+- `[a b c] > x;` — expands to `a > x;`, `b > x;`, and `c > x;`
+
+**Paired class mapping** (class → class):
+- `[a b] > [x y];` — expands to `a > x;` and `b > y;` (paired, positional mapping)
+- Both classes must have the same length for paired mapping
+
+**Classes in context**:
+- `a > b / [c d] _;` — expands to `a > b / c _;` and `a > b / d _;`
+- `a > b / _ [e f];` — expands to `a > b / _ e;` and `a > b / _ f;`
+- `a > b / [c d] _ [e f];` — expands to 4 rules (Cartesian product of contexts)
+
+**Multiple classes**:
+- `[a b] > [x y] / [c d] _;` — expands to 4 rules:
+  - `a > x / c _;`
+  - `a > x / d _;`
+  - `b > y / c _;`
+  - `b > y / d _;`
+
+**Multi-character phonemes in classes**:
+- `[th sh] > [θ ʃ];` — expands to `th > θ;` and `sh > ʃ;`
+
+**Validation rules**:
+- If the target is a class, the source must also be a class
+- For paired mapping, both classes must have the same length
+- Empty classes `[]` are not allowed
+
+**Examples**:
+```
+# Merge multiple phonemes to one
+[p b] > p;           # Both p and b become p (devoicing)
+
+# Paired transformation
+[p t k] > [b d g];   # p→b, t→d, k→g (voicing)
+
+# Context-sensitive with class
+[p t k] > [b d g] / [m n] _;   # Voicing after nasals
+
+# Error: target class without source class
+a > [x y];           # ERROR: Class in target requires class in source
+
+# Error: mismatched lengths
+[a b] > [x y z];     # ERROR: Classes must have same length
+```
+
+**Note**: Classes are expanded at parse time, so the Rule Engine and Reverser work with the expanded individual rules. This keeps the core logic simple while providing syntactic convenience.
