@@ -5,50 +5,16 @@
  *
  * Usage: node scripts/generate-phonemes.js <ruleset-file>
  * Example: node scripts/generate-phonemes.js public/rules/sem-pro_arb.phono
+ *
+ * This script now uses the actual parser to handle:
+ * - Variables and nested references
+ * - Phoneme classes
+ * - Intermediate phonemes (phonemes produced and consumed by rules)
  */
 
 import { readFileSync, writeFileSync } from 'fs';
 import { basename, dirname, join } from 'path';
-
-function parseRuleset(rulesetPath) {
-  const content = readFileSync(rulesetPath, 'utf-8');
-  const lines = content.split('\n');
-
-  const sourcePhonemes = new Set();
-  const targetPhonemes = new Set();
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || !trimmed.endsWith(';')) continue;
-
-    // Remove semicolon
-    const rulePart = trimmed.slice(0, -1).trim();
-
-    // Check for context (/ separates main rule from context)
-    let mainPart;
-    const slashIndex = rulePart.indexOf('/');
-    if (slashIndex !== -1) {
-      mainPart = rulePart.substring(0, slashIndex).trim();
-    } else {
-      mainPart = rulePart;
-    }
-
-    // Split by >
-    const parts = mainPart.split('>');
-    if (parts.length !== 2) continue;
-
-    const from = parts[0].trim();
-    const to = parts[1].trim();
-
-    if (from) sourcePhonemes.add(from);
-    if (to) targetPhonemes.add(to);
-  }
-
-  return {
-    source: Array.from(sourcePhonemes).sort(),
-    target: Array.from(targetPhonemes).sort()
-  };
-}
+import { generatePhonemeFiles } from '../src/lib/utils/phoneme-extractor.ts';
 
 function extractLanguageCodes(filename) {
   // Filename format: source-lang_target-lang.phono
@@ -79,8 +45,11 @@ function main() {
   try {
     console.log(`Processing ${rulesetPath}...`);
 
-    // Parse the ruleset
-    const { source, target } = parseRuleset(rulesetPath);
+    // Read the ruleset
+    const rulesText = readFileSync(rulesetPath, 'utf-8');
+
+    // Use the smart phoneme extractor
+    const result = generatePhonemeFiles(rulesText);
 
     // Extract language codes from filename
     const { source: sourceLang, target: targetLang } = extractLanguageCodes(rulesetPath);
@@ -90,23 +59,26 @@ function main() {
     const sourceFile = join(phonemesDir, `${sourceLang}.phonemes`);
     const targetFile = join(phonemesDir, `${targetLang}.phonemes`);
 
-    // Generate content
-    const sourceContent = source.join(' ');
-    const targetContent = target.join(' ');
-
     // Write files
-    writeFileSync(sourceFile, sourceContent, 'utf-8');
-    writeFileSync(targetFile, targetContent, 'utf-8');
+    writeFileSync(sourceFile, result.source, 'utf-8');
+    writeFileSync(targetFile, result.target, 'utf-8');
 
-    console.log('\nGenerated phoneme files:');
-    console.log(`  Source (${sourceLang}): ${sourceFile}`);
-    console.log(`    ${source.length} phonemes: ${sourceContent}`);
-    console.log(`  Target (${targetLang}): ${targetFile}`);
-    console.log(`    ${target.length} phonemes: ${targetContent}`);
+    console.log('\n✅ Generated phoneme files:');
+    console.log(`\n📄 Source (${sourceLang}): ${sourceFile}`);
+    console.log(`   ${result.source.split(' ').length} phonemes: ${result.source}`);
+    console.log(`\n📄 Target (${targetLang}): ${targetFile}`);
+    console.log(`   ${result.target.split(' ').length} phonemes: ${result.target}`);
+
+    if (result.intermediate) {
+      console.log(`\n⚠️  Intermediate phonemes detected:`);
+      console.log(`   ${result.intermediate.split(' ').length} phonemes: ${result.intermediate}`);
+      console.log(`   (These are produced by some rules and consumed by others)`);
+    }
+
     console.log('\n✓ Done!');
 
   } catch (error) {
-    console.error(`Error: ${error.message}`);
+    console.error(`❌ Error: ${error.message}`);
     process.exit(1);
   }
 }

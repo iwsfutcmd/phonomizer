@@ -3,6 +3,7 @@
   import { parseRules } from './lib/rules/parser';
   import { applyRules } from './lib/rules/engine';
   import { reverseRules } from './lib/rules/reverser';
+  import PhonemeExtractor from './lib/components/PhonemeExtractor.svelte';
 
   interface RulesetData {
     source: string;
@@ -387,6 +388,9 @@
           />
         </div>
       </div>
+
+      <!-- Phoneme Extractor -->
+      <PhonemeExtractor rulesText={rulesText} />
       {/if}
 
       <div class="word-section">

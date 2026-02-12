@@ -10,7 +10,7 @@
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "generate-phonemes": "node scripts/generate-phonemes.js"
+    "generate-phonemes": "npx tsx scripts/generate-phonemes.js"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^6.2.1",
