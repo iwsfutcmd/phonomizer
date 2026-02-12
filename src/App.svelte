@@ -4,15 +4,32 @@
   import { applyRules } from './lib/rules/engine';
   import { reverseRules } from './lib/rules/reverser';
 
-  interface Ruleset {
+  interface RulesetData {
+    source: string;
+    target: string;
+  }
+
+  interface Ruleset extends RulesetData {
     id: string;
-    name: string;
     rulesFile: string;
     sourcePhonemes: string;
     targetPhonemes: string;
   }
 
+  // Helper function to create a full Ruleset from minimal data
+  function createRuleset(data: RulesetData): Ruleset {
+    const id = `${data.source}_${data.target}`;
+    return {
+      ...data,
+      id,
+      rulesFile: `/rules/${id}.phono`,
+      sourcePhonemes: `/phonemes/${data.source}.phonemes`,
+      targetPhonemes: `/phonemes/${data.target}.phonemes`
+    };
+  }
+
   let rulesets = $state<Ruleset[]>([]);
+  let languages = $state<Record<string, string>>({});
   let selectedRulesetId = $state('sem-pro_arb');
   let rulesText = $state('');
   let inputWord = $state('');
@@ -27,17 +44,53 @@
   let targetLanguage = $state('hbo');
   let sourceLanguagePhonemes = $state('');
 
-  // Load available rulesets on mount
+  // Derived: Get available languages from rulesets
+  let availableLanguages = $derived(
+    rulesets
+      .map(r => ({
+        code: r.target,
+        displayName: languages[r.target] || r.target
+      }))
+      .sort((a, b) => a.displayName.localeCompare(b.displayName))
+  );
+
+  // Helper function to get ruleset display name
+  function getRulesetDisplayName(ruleset: Ruleset): string {
+    const sourceName = languages[ruleset.source] || ruleset.source;
+    const targetName = languages[ruleset.target] || ruleset.target;
+    return `${sourceName} → ${targetName}`;
+  }
+
+  // Discover all rule files at build time using Vite's glob
+  const ruleFiles = import.meta.glob('/public/rules/*.phono', { eager: false, query: '?url', import: 'default' });
+
+  // Load available rulesets and languages on mount
   onMount(async () => {
     try {
-      const response = await fetch('/rulesets.json');
-      if (response.ok) {
-        rulesets = await response.json();
-        // Load the default ruleset
-        await loadRuleset(selectedRulesetId);
-        // Load initial source language phonemes for cognates mode
-        await loadSourceLanguagePhonemes(sourceLanguage);
+      // Load language names
+      const languagesResponse = await fetch('/language_names.json');
+      if (languagesResponse.ok) {
+        languages = await languagesResponse.json();
       }
+
+      // Extract rulesets from discovered rule files
+      const rulesetData: RulesetData[] = Object.keys(ruleFiles)
+        .map(path => {
+          // Extract filename from path: /public/rules/sem-pro_akk.phono -> sem-pro_akk
+          const filename = path.split('/').pop()?.replace('.phono', '');
+          if (!filename) return null;
+
+          const [source, target] = filename.split('_');
+          return source && target ? { source, target } : null;
+        })
+        .filter((data): data is RulesetData => data !== null);
+
+      rulesets = rulesetData.map(createRuleset);
+
+      // Load the default ruleset
+      await loadRuleset(selectedRulesetId);
+      // Load initial source language phonemes for cognates mode
+      await loadSourceLanguagePhonemes(sourceLanguage);
     } catch (e) {
       console.error('Failed to load rulesets:', e);
     }
@@ -278,10 +331,9 @@
               <strong>Source Language</strong>
             </label>
             <select id="source-lang" bind:value={sourceLanguage}>
-              <option value="arb">Arabic</option>
-              <option value="hbo">Biblical Hebrew</option>
-              <option value="syc">Syriac</option>
-              <option value="gez">Ge'ez</option>
+              {#each availableLanguages as lang}
+                <option value={lang.code}>{lang.displayName}</option>
+              {/each}
             </select>
           </div>
 
@@ -290,10 +342,9 @@
               <strong>Target Language</strong>
             </label>
             <select id="target-lang" bind:value={targetLanguage}>
-              <option value="arb">Arabic</option>
-              <option value="hbo">Biblical Hebrew</option>
-              <option value="syc">Syriac</option>
-              <option value="gez">Ge'ez</option>
+              {#each availableLanguages as lang}
+                <option value={lang.code}>{lang.displayName}</option>
+              {/each}
             </select>
           </div>
         </div>
@@ -304,7 +355,7 @@
           </label>
           <select id="ruleset" bind:value={selectedRulesetId} onchange={handleRulesetChange}>
             {#each rulesets as ruleset}
-              <option value={ruleset.id}>{ruleset.name}</option>
+              <option value={ruleset.id}>{getRulesetDisplayName(ruleset)}</option>
             {/each}
           </select>
         </div>
