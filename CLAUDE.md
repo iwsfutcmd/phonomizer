@@ -175,13 +175,24 @@ Examples:
 
 ### Multi-Phoneme Sequences
 
-Format: `phoneme1 phoneme2 > target;`
+Format: `phoneme1 phoneme2 > target1 target2;`
 
-The source can be a sequence of phonemes (separated by spaces) that contract into a single phoneme:
+Both the source and target can be sequences of phonemes (separated by spaces):
 
-Examples:
+**Contraction** (sequence → single):
 - `a j > e;` — the sequence "aj" becomes "e"
 - `a w > o;` — the sequence "aw" becomes "o"
+
+**Expansion** (single → sequence):
+- `e > a j;` — "e" becomes the sequence "aj"
+
+**Identity** (sequence → same sequence):
+- `a j > a j;` — the sequence "aj" stays as "aj" (useful to block other rules)
+
+**Transformation** (sequence → different sequence):
+- `a j > e i;` — the sequence "aj" becomes "ei"
+
+**With context**:
 - `a j > e / _ #;` — "aj" becomes "e" at word end only
 
 **Important**: Multi-phoneme sequences are matched greedily and can be combined with context-sensitive rules.

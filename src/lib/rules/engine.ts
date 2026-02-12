@@ -48,6 +48,25 @@ function validateRuleSource(from: string, phonemes: string[]): string[] {
 }
 
 /**
+ * Validates that a rule's target is a valid sequence of phonemes
+ */
+function validateRuleTarget(to: string, phonemes: string[]): string[] {
+  if (to === '') return []; // Empty target (deletion) is valid
+
+  // Split by spaces to get potential sequence
+  const parts = to.split(/\s+/);
+
+  // Validate each part is a phoneme
+  for (const part of parts) {
+    if (!phonemes.includes(part)) {
+      throw new Error(`target phoneme "${part}" is not in target phoneme set`);
+    }
+  }
+
+  return parts;
+}
+
+/**
  * Applies phonological rules to a word in forward direction
  *
  * Rules are applied sequentially. Each rule transforms the entire word
@@ -73,10 +92,8 @@ export function applyRules(
     // Validate source (can be a sequence like "a j")
     validateRuleSource(rule.from, sourcePhonemes);
 
-    // Validate target
-    if (rule.to !== '' && !targetPhonemes.includes(rule.to)) {
-      throw new Error(`Rule "${rule.from} > ${rule.to}": target phoneme "${rule.to}" is not in target phoneme set`);
-    }
+    // Validate target (can be a sequence like "a j" or empty for deletion)
+    validateRuleTarget(rule.to, targetPhonemes);
   }
 
   // Apply each rule to the token sequence
@@ -93,8 +110,9 @@ export function applyRules(
 function applyRuleToTokens(tokens: string[], rule: Rule, phonemes: string[]): string[] {
   const { from, to, leftContext, rightContext } = rule;
 
-  // Parse source as potentially multi-phoneme sequence
+  // Parse source and target as potentially multi-phoneme sequences
   const fromSequence = from.split(/\s+/);
+  const toSequence = to === '' ? [] : to.split(/\s+/);
   const sequenceLength = fromSequence.length;
 
   const result: string[] = [];
@@ -141,10 +159,8 @@ function applyRuleToTokens(tokens: string[], rule: Rule, phonemes: string[]): st
 
       // Apply replacement if context matches
       if (leftMatch && rightMatch) {
-        if (to !== '') {
-          result.push(to);
-        }
-        // If to is empty, we delete the sequence (don't push anything)
+        // Push all phonemes in the target sequence (may be empty for deletion)
+        result.push(...toSequence);
         i += sequenceLength; // Skip the entire matched sequence
       } else {
         result.push(tokens[i]);

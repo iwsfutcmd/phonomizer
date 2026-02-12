@@ -116,4 +116,25 @@ describe('applyRules (forward)', () => {
     const result = applyRules('bajkaj', rules, ['b', 'a', 'j', 'k'], ['b', 'a', 'j', 'e', 'k']);
     expect(result).toBe('bajke'); // Only final 'aj' becomes 'e'
   });
+
+  it('should handle multi-phoneme target (identity)', () => {
+    // Test rule like "a j > a j" (sequence stays the same)
+    const rules: Rule[] = [{ from: 'a j', to: 'a j' }];
+    const result = applyRules('baj', rules, ['b', 'a', 'j'], ['b', 'a', 'j']);
+    expect(result).toBe('baj'); // No change
+  });
+
+  it('should handle multi-phoneme source and target (expansion)', () => {
+    // Test rule like "e > a j" (one phoneme becomes two)
+    const rules: Rule[] = [{ from: 'e', to: 'a j' }];
+    const result = applyRules('be', rules, ['b', 'e'], ['b', 'a', 'j']);
+    expect(result).toBe('baj'); // 'e' expands to 'aj'
+  });
+
+  it('should handle multi-phoneme to multi-phoneme transformation', () => {
+    // Test rule like "a j > e i" (two phonemes become two different phonemes)
+    const rules: Rule[] = [{ from: 'a j', to: 'e i' }];
+    const result = applyRules('baj', rules, ['b', 'a', 'j'], ['b', 'e', 'i']);
+    expect(result).toBe('bei'); // 'aj' becomes 'ei'
+  });
 });
