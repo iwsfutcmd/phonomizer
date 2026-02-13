@@ -5,16 +5,16 @@ import type { Rule } from '../types';
 
 describe('applyRules (forward)', () => {
   it('should apply a single rule', () => {
-    const rules: Rule[] = [{ from: 'a', to: 'x' }];
+    const rules: Rule[] = [{ from: ['a'], to: ['x'] }];
     const result = applyRules('abc', rules, ['a', 'b', 'c'], ['x', 'b', 'c']);
     expect(result).toBe('xbc');
   });
 
   it('should apply multiple rules sequentially', () => {
     const rules: Rule[] = [
-      { from: 'a', to: 'x' },
-      { from: 'b', to: 'y' },
-      { from: 'c', to: 'x' }
+      { from: ['a'], to: ['x'] },
+      { from: ['b'], to: ['y'] },
+      { from: ['c'], to: ['x'] }
     ];
     const result = applyRules('abc', rules, ['a', 'b', 'c'], ['x', 'y']);
     expect(result).toBe('xyx');
@@ -22,66 +22,55 @@ describe('applyRules (forward)', () => {
 
   it('should apply rules in order (order matters)', () => {
     const rules: Rule[] = [
-      { from: 'a', to: 'b' },
-      { from: 'b', to: 'c' }
+      { from: ['a'], to: ['b'] },
+      { from: ['b'], to: ['c'] }
     ];
     const result = applyRules('a', rules, ['a', 'b'], ['b', 'c']);
     expect(result).toBe('c'); // a -> b, then b -> c
   });
 
   it('should handle multi-character phonemes', () => {
-    const rules: Rule[] = [{ from: 'th', to: 'θ' }];
+    const rules: Rule[] = [{ from: ['th'], to: ['θ'] }];
     const result = applyRules('think', rules, ['th', 'i', 'n', 'k'], ['θ', 'i', 'n', 'k']);
     expect(result).toBe('θink');
   });
 
   it('should handle deletion (empty target)', () => {
-    const rules: Rule[] = [{ from: 'h', to: '' }];
+    const rules: Rule[] = [{ from: ['h'], to: [] }];
     const result = applyRules('hello', rules, ['h', 'e', 'l', 'o'], ['e', 'l', 'o']);
     expect(result).toBe('ello');
   });
 
   it('should throw error if source word uses invalid phonemes', () => {
-    const rules: Rule[] = [{ from: 'a', to: 'x' }];
+    const rules: Rule[] = [{ from: ['a'], to: ['x'] }];
     expect(() => {
       applyRules('abc', rules, ['a', 'b'], ['x']);
     }).toThrow('Cannot tokenize');
   });
 
-  it('should throw error if rule source not in source phoneme set', () => {
-    const rules: Rule[] = [{ from: 'z', to: 'x' }];
-    expect(() => {
-      applyRules('abc', rules, ['a', 'b', 'c'], ['x']);
-    }).toThrow('source phoneme "z" is not in source phoneme set');
-  });
-
-  it('should throw error if rule target not in target phoneme set', () => {
-    const rules: Rule[] = [{ from: 'a', to: 'z' }];
-    expect(() => {
-      applyRules('abc', rules, ['a', 'b', 'c'], ['x']);
-    }).toThrow('target phoneme "z" is not in target phoneme set');
-  });
+  // Note: We no longer validate that rules use phonemes from the phoneme sets
+  // because rules may use intermediate phonemes (produced by one rule, consumed by another)
 
   it('should apply context-sensitive rule (word-initial)', () => {
-    const rules: Rule[] = [{ from: 'w', to: 'j', leftContext: '#' }];
+    const rules: Rule[] = [{ from: ['w'], to: ['j'], leftContext: ['#'] }];
     const result = applyRules('waw', rules, ['w', 'a'], ['j', 'a', 'w']);
     expect(result).toBe('jaw'); // Only initial w becomes j
   });
 
   it('should apply context-sensitive rule (word-final)', () => {
-    const rules: Rule[] = [{ from: 't', to: 'd', rightContext: '#' }];
+    const rules: Rule[] = [{ from: ['t'], to: ['d'], rightContext: ['#'] }];
     const result = applyRules('tat', rules, ['t', 'a'], ['d', 'a', 't']);
     expect(result).toBe('tad'); // Only final t becomes d
   });
 
   it('should apply context-sensitive rule (between phonemes)', () => {
-    const rules: Rule[] = [{ from: 'a', to: 'e', leftContext: 'b', rightContext: 'c' }];
+    const rules: Rule[] = [{ from: ['a'], to: ['e'], leftContext: ['b'], rightContext: ['c'] }];
     const result = applyRules('bacbad', rules, ['a', 'b', 'c', 'd'], ['e', 'b', 'c', 'd']);
     expect(result).toBe('becbad'); // Only 'a' between b and c becomes e
   });
 
   it('should not apply rule when context does not match', () => {
-    const rules: Rule[] = [{ from: 'w', to: 'j', leftContext: '#' }];
+    const rules: Rule[] = [{ from: ['w'], to: ['j'], leftContext: ['#'] }];
     const result = applyRules('awa', rules, ['w', 'a'], ['j', 'a', 'w']);
     expect(result).toBe('awa'); // Middle w is not at word boundary
   });
@@ -91,8 +80,8 @@ describe('applyRules (forward)', () => {
     // before "ɬʼ > dˤ" could be applied. With tokenization, "ɬʼ" is treated as
     // a single token, so the "ɬ > ʃ" rule won't match it.
     const rules: Rule[] = [
-      { from: 'ɬ', to: 'ʃ' },
-      { from: 'ɬʼ', to: 'dˤ' }
+      { from: ['ɬ'], to: ['ʃ'] },
+      { from: ['ɬʼ'], to: ['dˤ'] }
     ];
     const result = applyRules('ʔrɬʼ', rules, ['ʔ', 'r', 'ɬ', 'ɬʼ'], ['ʔ', 'r', 'ʃ', 'dˤ']);
     expect(result).toBe('ʔrdˤ'); // ɬʼ should become dˤ, not ʃʼ
@@ -100,41 +89,41 @@ describe('applyRules (forward)', () => {
 
   it('should handle multi-phoneme source (sequence contraction)', () => {
     // Test rule like "a j > e" (two phonemes become one)
-    const rules: Rule[] = [{ from: 'a j', to: 'e' }];
+    const rules: Rule[] = [{ from: ['a', 'j'], to: ['e'] }];
     const result = applyRules('baj', rules, ['b', 'a', 'j'], ['b', 'e']);
     expect(result).toBe('be'); // 'a' followed by 'j' becomes 'e'
   });
 
   it('should handle multi-phoneme source with multiple occurrences', () => {
-    const rules: Rule[] = [{ from: 'a j', to: 'e' }];
+    const rules: Rule[] = [{ from: ['a', 'j'], to: ['e'] }];
     const result = applyRules('bajkaj', rules, ['b', 'a', 'j', 'k'], ['b', 'e', 'k']);
     expect(result).toBe('beke'); // Both 'aj' sequences become 'e'
   });
 
   it('should handle multi-phoneme source with context', () => {
     // Test rule like "a j > e / _ #" (aj becomes e at word end)
-    const rules: Rule[] = [{ from: 'a j', to: 'e', rightContext: '#' }];
+    const rules: Rule[] = [{ from: ['a', 'j'], to: ['e'], rightContext: ['#'] }];
     const result = applyRules('bajkaj', rules, ['b', 'a', 'j', 'k'], ['b', 'a', 'j', 'e', 'k']);
     expect(result).toBe('bajke'); // Only final 'aj' becomes 'e'
   });
 
   it('should handle multi-phoneme target (identity)', () => {
     // Test rule like "a j > a j" (sequence stays the same)
-    const rules: Rule[] = [{ from: 'a j', to: 'a j' }];
+    const rules: Rule[] = [{ from: ['a', 'j'], to: ['a', 'j'] }];
     const result = applyRules('baj', rules, ['b', 'a', 'j'], ['b', 'a', 'j']);
     expect(result).toBe('baj'); // No change
   });
 
   it('should handle multi-phoneme source and target (expansion)', () => {
     // Test rule like "e > a j" (one phoneme becomes two)
-    const rules: Rule[] = [{ from: 'e', to: 'a j' }];
+    const rules: Rule[] = [{ from: ['e'], to: ['a', 'j'] }];
     const result = applyRules('be', rules, ['b', 'e'], ['b', 'a', 'j']);
     expect(result).toBe('baj'); // 'e' expands to 'aj'
   });
 
   it('should handle multi-phoneme to multi-phoneme transformation', () => {
     // Test rule like "a j > e i" (two phonemes become two different phonemes)
-    const rules: Rule[] = [{ from: 'a j', to: 'e i' }];
+    const rules: Rule[] = [{ from: ['a', 'j'], to: ['e', 'i'] }];
     const result = applyRules('baj', rules, ['b', 'a', 'j'], ['b', 'e', 'i']);
     expect(result).toBe('bei'); // 'aj' becomes 'ei'
   });
@@ -172,6 +161,45 @@ describe('applyRules (forward)', () => {
       const rules = parseRules('[th sh] > [θ ʃ];');
       const result = applyRules('thinksharp', rules, ['th', 'i', 'n', 'k', 'sh', 'a', 'r', 'p'], ['θ', 'ʃ', 'i', 'n', 'k', 'a', 'r', 'p']);
       expect(result).toBe('θinkʃarp');
+    });
+  });
+
+  describe('multi-phoneme contexts', () => {
+    it('should handle multi-phoneme left context', () => {
+      // Test rule: a > b / t h _  (a becomes b after "t h" sequence)
+      const rules: Rule[] = [{ from: ['a'], to: ['b'], leftContext: ['t', 'h'] }];
+      const result = applyRules('tha', rules, ['t', 'h', 'a'], ['t', 'h', 'b']);
+      expect(result).toBe('thb'); // a becomes b after th
+    });
+
+    it('should handle multi-phoneme right context', () => {
+      // Test rule: a > b / _ t h  (a becomes b before "t h" sequence)
+      const rules: Rule[] = [{ from: ['a'], to: ['b'], rightContext: ['t', 'h'] }];
+      const result = applyRules('ath', rules, ['a', 't', 'h'], ['b', 't', 'h']);
+      expect(result).toBe('bth'); // a becomes b before th
+    });
+
+    it('should handle multi-phoneme contexts on both sides', () => {
+      // Test rule: a > b / c d _ e f  (a becomes b between "c d" and "e f")
+      const rules: Rule[] = [{ from: ['a'], to: ['b'], leftContext: ['c', 'd'], rightContext: ['e', 'f'] }];
+      const result = applyRules('cdaef', rules, ['c', 'd', 'a', 'e', 'f'], ['c', 'd', 'b', 'e', 'f']);
+      expect(result).toBe('cdbef'); // a becomes b in correct context
+    });
+
+    it('should not apply rule when multi-phoneme context does not match', () => {
+      // Test rule: a > b / t h _
+      const rules: Rule[] = [{ from: ['a'], to: ['b'], leftContext: ['t', 'h'] }];
+      const result1 = applyRules('ta', rules, ['t', 'h', 'a'], ['t', 'h', 'b', 'a']);
+      const result2 = applyRules('ha', rules, ['t', 'h', 'a'], ['t', 'h', 'b', 'a']);
+      expect(result1).toBe('ta'); // Only 't' before a, not 't h'
+      expect(result2).toBe('ha'); // Only 'h' before a, not 't h'
+    });
+
+    it('should handle word boundary with multi-phoneme sequences', () => {
+      // Test rule: t h > θ / # _  (t followed by h becomes θ at word beginning)
+      const rules: Rule[] = [{ from: ['t', 'h'], to: ['θ'], leftContext: ['#'] }];
+      const result = applyRules('thathin', rules, ['t', 'h', 'a', 'i', 'n'], ['θ', 'a', 't', 'h', 'i', 'n']);
+      expect(result).toBe('θathin'); // Only initial t-h becomes θ
     });
   });
 });

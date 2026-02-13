@@ -11,7 +11,13 @@ function tokenizePhonemes(str: string, knownPhonemes: Set<string>): string[] {
   const result: string[] = [];
   const tokens = str.split(/\s+/).filter(t => t.length > 0);
 
-  for (const token of tokens) {
+  for (let token of tokens) {
+    // Strip any brackets (shouldn't appear after parser expansion, but clean just in case)
+    token = token.replace(/[\[\]]/g, '');
+
+    // Skip if empty after stripping
+    if (!token) continue;
+
     // If it's a known multi-character phoneme, use it as-is
     // Otherwise, treat each character as a separate phoneme
     if (knownPhonemes.has(token)) {
@@ -52,18 +58,16 @@ export function extractPhonemes(rulesText: string): {
   const allPhonemes = new Set<string>();
 
   for (const rule of rules) {
-    // Add from and to as-is (they're already individual phonemes after expansion)
-    if (rule.from) allPhonemes.add(rule.from);
-    if (rule.to) allPhonemes.add(rule.to);
+    // Add phonemes from from and to arrays
+    rule.from.forEach(p => allPhonemes.add(p));
+    rule.to.forEach(p => allPhonemes.add(p));
 
     // Add context phonemes
     if (rule.leftContext) {
-      const tokens = rule.leftContext.split(/\s+/).filter(t => t.length > 0 && t !== '#');
-      tokens.forEach(t => allPhonemes.add(t));
+      rule.leftContext.filter(t => t !== '#').forEach(t => allPhonemes.add(t));
     }
     if (rule.rightContext) {
-      const tokens = rule.rightContext.split(/\s+/).filter(t => t.length > 0 && t !== '#');
-      tokens.forEach(t => allPhonemes.add(t));
+      rule.rightContext.filter(t => t !== '#').forEach(t => allPhonemes.add(t));
     }
   }
 
@@ -81,40 +85,36 @@ export function extractPhonemes(rulesText: string): {
     const rule = rules[i];
 
     // Track where each phoneme appears
-    if (rule.from) {
-      const fromPhonemes = tokenizePhonemes(rule.from, allPhonemes);
-      fromPhonemes.forEach(p => {
-        appearsInFrom.add(p);
+    rule.from.forEach(p => {
+      appearsInFrom.add(p);
 
-        // Only track as "consumed" if it's an unconditional rule
-        // Context-sensitive rules may not apply in all contexts
-        if (!rule.leftContext && !rule.rightContext) {
-          lastConsumedAt.set(p, i);
-        }
-      });
-    }
+      // Only track as "consumed" if it's an unconditional rule
+      // Context-sensitive rules may not apply in all contexts
+      if (!rule.leftContext && !rule.rightContext) {
+        lastConsumedAt.set(p, i);
+      }
+    });
 
-    if (rule.to) {
-      const toPhonemes = tokenizePhonemes(rule.to, allPhonemes);
-      toPhonemes.forEach(p => {
-        appearsInTo.add(p);
-        lastProducedAt.set(p, i);
-      });
-    }
+    rule.to.forEach(p => {
+      appearsInTo.add(p);
+      lastProducedAt.set(p, i);
+    });
 
     // Check for identity rules (x > x with no context)
-    if (rule.from === rule.to && !rule.leftContext && !rule.rightContext) {
-      tokenizePhonemes(rule.from, allPhonemes).forEach(p => identityPhonemes.add(p));
+    if (rule.from.length === rule.to.length &&
+        rule.from.every((p, idx) => p === rule.to[idx]) &&
+        !rule.leftContext && !rule.rightContext) {
+      rule.from.forEach(p => identityPhonemes.add(p));
     }
 
     if (rule.leftContext) {
-      tokenizePhonemes(rule.leftContext, allPhonemes).forEach(p => {
+      rule.leftContext.forEach(p => {
         if (p !== '#') appearsInContext.add(p);
       });
     }
 
     if (rule.rightContext) {
-      tokenizePhonemes(rule.rightContext, allPhonemes).forEach(p => {
+      rule.rightContext.forEach(p => {
         if (p !== '#') appearsInContext.add(p);
       });
     }

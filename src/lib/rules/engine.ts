@@ -31,42 +31,6 @@ function tokenize(word: string, phonemes: string[]): string[] {
 }
 
 /**
- * Validates that a rule's source is a valid sequence of phonemes
- */
-function validateRuleSource(from: string, phonemes: string[]): string[] {
-  // Split by spaces to get potential sequence
-  const parts = from.split(/\s+/);
-
-  // Validate each part is a phoneme
-  for (const part of parts) {
-    if (!phonemes.includes(part)) {
-      throw new Error(`source phoneme "${part}" is not in source phoneme set`);
-    }
-  }
-
-  return parts;
-}
-
-/**
- * Validates that a rule's target is a valid sequence of phonemes
- */
-function validateRuleTarget(to: string, phonemes: string[]): string[] {
-  if (to === '') return []; // Empty target (deletion) is valid
-
-  // Split by spaces to get potential sequence
-  const parts = to.split(/\s+/);
-
-  // Validate each part is a phoneme
-  for (const part of parts) {
-    if (!phonemes.includes(part)) {
-      throw new Error(`target phoneme "${part}" is not in target phoneme set`);
-    }
-  }
-
-  return parts;
-}
-
-/**
  * Applies phonological rules to a word in forward direction
  *
  * Rules are applied sequentially. Each rule transforms the entire word
@@ -87,14 +51,9 @@ export function applyRules(
   // Tokenize the word into phonemes
   let tokens = tokenize(word, sourcePhonemes);
 
-  // Validate that rules use valid phonemes
-  for (const rule of rules) {
-    // Validate source (can be a sequence like "a j")
-    validateRuleSource(rule.from, sourcePhonemes);
-
-    // Validate target (can be a sequence like "a j" or empty for deletion)
-    validateRuleTarget(rule.to, targetPhonemes);
-  }
+  // Note: We don't validate that rules use phonemes from the phoneme sets
+  // because rules may use intermediate phonemes (phonemes produced by one rule
+  // and consumed by another, which don't appear in either the source or target set)
 
   // Apply each rule to the token sequence
   for (const rule of rules) {
@@ -110,11 +69,7 @@ export function applyRules(
 function applyRuleToTokens(tokens: string[], rule: Rule, phonemes: string[]): string[] {
   const { from, to, leftContext, rightContext } = rule;
 
-  // Parse source and target as potentially multi-phoneme sequences
-  const fromSequence = from.split(/\s+/);
-  const toSequence = to === '' ? [] : to.split(/\s+/);
-  const sequenceLength = fromSequence.length;
-
+  const sequenceLength = from.length;
   const result: string[] = [];
   let i = 0;
 
@@ -123,7 +78,7 @@ function applyRuleToTokens(tokens: string[], rule: Rule, phonemes: string[]): st
     let sequenceMatches = true;
     if (i + sequenceLength <= tokens.length) {
       for (let j = 0; j < sequenceLength; j++) {
-        if (tokens[i + j] !== fromSequence[j]) {
+        if (tokens[i + j] !== from[j]) {
           sequenceMatches = false;
           break;
         }
@@ -136,31 +91,51 @@ function applyRuleToTokens(tokens: string[], rule: Rule, phonemes: string[]): st
       // Check left context (context is relative to the first phoneme of the sequence)
       let leftMatch = true;
       if (leftContext !== undefined) {
-        if (leftContext === '#') {
+        if (leftContext.length === 1 && leftContext[0] === '#') {
           // Must be at word beginning
           leftMatch = i === 0;
         } else {
-          // Must be preceded by leftContext
-          leftMatch = i > 0 && tokens[i - 1] === leftContext;
+          // Must be preceded by the entire left context sequence
+          const contextLength = leftContext.length;
+          if (i >= contextLength) {
+            for (let j = 0; j < contextLength; j++) {
+              if (tokens[i - contextLength + j] !== leftContext[j]) {
+                leftMatch = false;
+                break;
+              }
+            }
+          } else {
+            leftMatch = false;
+          }
         }
       }
 
       // Check right context (context is relative to the last phoneme of the sequence)
       let rightMatch = true;
       if (rightContext !== undefined) {
-        if (rightContext === '#') {
+        if (rightContext.length === 1 && rightContext[0] === '#') {
           // Must be at word end
           rightMatch = (i + sequenceLength) === tokens.length;
         } else {
-          // Must be followed by rightContext
-          rightMatch = (i + sequenceLength) < tokens.length && tokens[i + sequenceLength] === rightContext;
+          // Must be followed by the entire right context sequence
+          const contextLength = rightContext.length;
+          if (i + sequenceLength + contextLength <= tokens.length) {
+            for (let j = 0; j < contextLength; j++) {
+              if (tokens[i + sequenceLength + j] !== rightContext[j]) {
+                rightMatch = false;
+                break;
+              }
+            }
+          } else {
+            rightMatch = false;
+          }
         }
       }
 
       // Apply replacement if context matches
       if (leftMatch && rightMatch) {
         // Push all phonemes in the target sequence (may be empty for deletion)
-        result.push(...toSequence);
+        result.push(...to);
         i += sequenceLength; // Skip the entire matched sequence
       } else {
         result.push(tokens[i]);

@@ -117,10 +117,10 @@ Key types in `src/lib/types/`:
 
 ```typescript
 interface Rule {
-  from: string;            // Source phoneme/pattern
-  to: string;              // Target phoneme/pattern
-  leftContext?: string;    // Optional: context before (# = word boundary)
-  rightContext?: string;   // Optional: context after (# = word boundary)
+  from: string[];           // Source phoneme sequence (e.g., ['a', 'j'] or ['t', 'h'])
+  to: string[];             // Target phoneme sequence (e.g., ['e', 'i'] or [] for deletion)
+  leftContext?: string[];   // Optional: context before (e.g., ['t', 'h'] or ['#'] for word boundary)
+  rightContext?: string[];  // Optional: context after (e.g., ['c', 'd'] or ['#'] for word boundary)
 }
 
 interface TransformResult {
@@ -136,6 +136,8 @@ interface PhonemeSet {
 }
 ```
 
+**Internal Representation**: Rules are stored with array fields to correctly handle multi-phoneme sequences and contexts. The parser converts space-separated strings from the rule syntax into arrays during parsing.
+
 **Phoneme Parsing**: Phonemes are entered as space or comma-separated strings (e.g., "a b c" or "a, b, c"). Supports multi-character phonemes like "th", "sh", "ts".
 
 ## Technical Notes
@@ -143,6 +145,7 @@ interface PhonemeSet {
 - **Svelte 5**: This project uses Svelte 5 with runes (new reactivity system)
 - **TypeScript**: Strict mode enabled, prefer explicit types for rule engine logic
 - **Vite**: Hot module replacement enabled for fast development iteration
+- **Array-Based Rules**: Rule fields (from, to, leftContext, rightContext) are arrays of phonemes, not strings. This correctly handles multi-phoneme sequences and contexts (e.g., `a > b / t h _;` where the left context is the two-phoneme sequence "t h")
 
 ## Rule Syntax
 
@@ -230,6 +233,23 @@ Phoneme classes allow you to write compact rules that expand to multiple individ
 - If the target is a class, the source must also be a class
 - For paired mapping, both classes must have the same length
 - Empty classes `[]` are not allowed
+
+**Empty marker (optional elements)**:
+- Use `_` inside a class to represent "nothing" or an optional element
+- `a > b / c [d e _] _;` — expands to three rules:
+  - `a > b / c d _;` (when preceded by c and d)
+  - `a > b / c e _;` (when preceded by c and e)
+  - `a > b / c _;` (when preceded by c only)
+- This allows modeling optional contexts or alternative forms
+- **Important validation**: To prevent vacuous rules, if a class contains `_`, there must be other non-class content in that context:
+  - ✓ Valid: `a > b / c [d e _] _;` (has `c` before the class)
+  - ✓ Valid: `a > b / _ [d e _] f;` (has `f` after the class)
+  - ✗ Invalid: `a > b / [d e _] _;` (class with `_` is the only left context - creates redundant rules)
+  - ✗ Invalid: `a > b / _ [d e _];` (class with `_` is the only right context)
+  - ✗ Invalid: `a > b / [a _] [b _] _;` (all classes can be empty simultaneously)
+- Example use cases:
+  - Optional consonants: `V > Vː / _ [C _] #;` (vowel lengthens before optional consonant at end)
+  - Cluster simplification: `C > ∅ / _ [s t _] C;` (consonant deletes before optional s/t and another consonant)
 
 **Examples**:
 ```

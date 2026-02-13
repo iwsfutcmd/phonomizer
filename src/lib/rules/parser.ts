@@ -39,13 +39,15 @@ import type { Rule } from '../types';
 /**
  * Flattens nested class notation into array of phonemes
  * Example: "[a [b c] d]" → ["a", "b", "c", "d"]
+ * Treats _ as empty marker (will be undefined in result)
  */
-function flattenNestedClass(str: string): string[] {
+function flattenNestedClass(str: string): Array<string | undefined> {
   const trimmed = str.trim();
 
   // Base case: single phoneme (no brackets)
   if (!trimmed.startsWith('[') || !trimmed.endsWith(']')) {
-    return [trimmed];
+    // Treat _ as undefined (empty marker)
+    return trimmed === '_' ? [undefined] : [trimmed];
   }
 
   // Remove outer brackets
@@ -55,7 +57,7 @@ function flattenNestedClass(str: string): string[] {
   }
 
   // Parse tokens handling nested brackets
-  const result: string[] = [];
+  const result: Array<string | undefined> = [];
   let depth = 0;
   let current = '';
 
@@ -87,15 +89,129 @@ function flattenNestedClass(str: string): string[] {
 
 /**
  * Extracts phonemes from a class notation [a b c]
- * Returns null if the string is not a class
+ * Returns null if the string is not a SINGLE class (e.g., multiple classes like "[a] [b]" returns null)
+ * Treats _ as undefined (empty marker)
  */
-function extractClass(str: string): string[] | null {
+function extractClass(str: string): Array<string | undefined> | null {
   const trimmed = str.trim();
   if (!trimmed.startsWith('[') || !trimmed.endsWith(']')) {
     return null;
   }
 
+  // Check if this is a single class or multiple classes
+  // Count opening brackets - if more than 1 at depth 0, it's multiple classes
+  let depth = 0;
+  let classCount = 0;
+  for (const char of trimmed) {
+    if (char === '[') {
+      if (depth === 0) classCount++;
+      depth++;
+    } else if (char === ']') {
+      depth--;
+    }
+  }
+
+  // If multiple top-level classes, this is not a single class
+  if (classCount > 1) {
+    return null;
+  }
+
   return flattenNestedClass(trimmed);
+}
+
+/**
+ * Checks if a class contains the empty marker _
+ */
+function classContainsEmpty(classContent: string): boolean {
+  const phonemes = classContent.split(/\s+/).filter(p => p.length > 0);
+  return phonemes.some(p => p.trim() === '_');
+}
+
+/**
+ * Validates that a context with classes containing _ doesn't create vacuous rules
+ * Throws an error if all elements in the context can be simultaneously empty
+ */
+function validateContextWithEmpty(contextStr: string, contextType: 'left' | 'right', lineNum: number, originalLine: string): void {
+  // Find all classes in the context
+  const classRegex = /\[([^\]]+)\]/g;
+  const matches = Array.from(contextStr.matchAll(classRegex));
+
+  if (matches.length === 0) {
+    return; // No classes, nothing to validate
+  }
+
+  // Check if all classes contain _
+  const classesWithEmpty = matches.filter(m => classContainsEmpty(m[1]));
+
+  if (classesWithEmpty.length === 0) {
+    return; // No classes with _, nothing to validate
+  }
+
+  // Remove all classes from the string to see if there's any non-class content
+  let withoutClasses = contextStr;
+  for (const match of matches) {
+    withoutClasses = withoutClasses.replace(match[0], '');
+  }
+  const hasNonClassContent = withoutClasses.trim().length > 0;
+
+  // Check if all classes have _ (can all be empty simultaneously)
+  const allClassesHaveEmpty = matches.every(m => classContainsEmpty(m[1]));
+
+  // Error if all classes can be empty AND there's no other content
+  if (allClassesHaveEmpty && !hasNonClassContent) {
+    const contextName = contextType === 'left' ? 'left context' : 'right context';
+    throw new Error(
+      `Line ${lineNum}: Vacuous rule - ${contextName} contains only classes with _, ` +
+      `which can all be empty simultaneously, making the rule match cases it shouldn't: "${originalLine}"`
+    );
+  }
+}
+
+/**
+ * Expands embedded classes in a string (e.g., "x [a b] y" -> ["x a y", "x b y"])
+ * Handles _ as a special marker for "nothing" (empty string)
+ */
+function expandEmbeddedClasses(str: string | undefined): string[] {
+  if (!str) return [undefined as any];
+
+  // Find all classes in the string
+  const classRegex = /\[([^\]]+)\]/g;
+  const matches = Array.from(str.matchAll(classRegex));
+
+  if (matches.length === 0) {
+    // No classes found, return as-is
+    return [str];
+  }
+
+  // Start with the original string
+  let results = [str];
+
+  // Process each class match
+  for (const match of matches) {
+    const fullMatch = match[0]; // e.g., "[a b _]"
+    const classContent = match[1]; // e.g., "a b _"
+
+    // Extract phonemes from the class, treating _ as empty marker
+    const phonemes = classContent.split(/\s+/).filter(p => p.length > 0).map(p => {
+      const trimmed = p.trim();
+      return trimmed === '_' ? '' : trimmed;
+    });
+
+    // Expand: for each current result, create variants with each phoneme
+    const newResults: string[] = [];
+    for (const result of results) {
+      for (const phoneme of phonemes) {
+        // Replace the class with the phoneme
+        const expanded = result.replace(fullMatch, phoneme);
+        // Clean up extra spaces
+        const cleaned = expanded.replace(/\s+/g, ' ').trim();
+        newResults.push(cleaned || undefined as any); // undefined for empty context
+      }
+    }
+    results = newResults;
+  }
+
+  return results;
 }
 
 /**
@@ -257,8 +373,9 @@ function expandRule(baseRule: { from: string; to: string; leftContext?: string; 
   }
 
   // Determine context combinations
-  const leftContextOptions = leftContextClass || (baseRule.leftContext !== undefined ? [baseRule.leftContext] : [undefined]);
-  const rightContextOptions = rightContextClass || (baseRule.rightContext !== undefined ? [baseRule.rightContext] : [undefined]);
+  // First try whole-context classes (legacy), then expand embedded classes
+  const leftContextOptions = leftContextClass || expandEmbeddedClasses(baseRule.leftContext);
+  const rightContextOptions = rightContextClass || expandEmbeddedClasses(baseRule.rightContext);
 
   // Generate Cartesian product of all combinations
   const expandedRules: Rule[] = [];
@@ -266,11 +383,23 @@ function expandRule(baseRule: { from: string; to: string; leftContext?: string; 
   for (const { from, to } of fromToOptions) {
     for (const leftContext of leftContextOptions) {
       for (const rightContext of rightContextOptions) {
+        // Convert strings to arrays of phonemes
+        const fromArray = from.split(/\s+/).filter(p => p.length > 0);
+        const toArray = to === '' ? [] : to.split(/\s+/).filter(p => p.length > 0);
+
+        // Convert contexts to arrays (undefined stays undefined)
+        const leftContextArray = leftContext === undefined
+          ? undefined
+          : leftContext.split(/\s+/).filter(p => p.length > 0);
+        const rightContextArray = rightContext === undefined
+          ? undefined
+          : rightContext.split(/\s+/).filter(p => p.length > 0);
+
         expandedRules.push({
-          from,
-          to,
-          leftContext,
-          rightContext
+          from: fromArray,
+          to: toArray,
+          leftContext: leftContextArray,
+          rightContext: rightContextArray
         });
       }
     }
@@ -350,13 +479,36 @@ export function parseRules(rulesText: string): Rule[] {
     let rightContext: string | undefined;
 
     if (contextPart) {
-      const underscoreIndex = contextPart.indexOf('_');
+      // Find the placeholder _ (not inside brackets)
+      let underscoreIndex = -1;
+      let depth = 0;
+
+      for (let i = 0; i < contextPart.length; i++) {
+        const char = contextPart[i];
+        if (char === '[') {
+          depth++;
+        } else if (char === ']') {
+          depth--;
+        } else if (char === '_' && depth === 0) {
+          underscoreIndex = i;
+          break;
+        }
+      }
+
       if (underscoreIndex === -1) {
         throw new Error(`Line ${lineNum}: Context must contain _ to mark phoneme position: "${line}"`);
       }
 
       leftContext = contextPart.substring(0, underscoreIndex).trim();
       rightContext = contextPart.substring(underscoreIndex + 1).trim();
+
+      // Validate contexts with empty markers before converting to undefined
+      if (leftContext && leftContext !== '') {
+        validateContextWithEmpty(leftContext, 'left', lineNum, line);
+      }
+      if (rightContext && rightContext !== '') {
+        validateContextWithEmpty(rightContext, 'right', lineNum, line);
+      }
 
       // Empty string means no context on that side
       if (leftContext === '') leftContext = undefined;

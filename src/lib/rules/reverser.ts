@@ -106,14 +106,11 @@ export function reverseRules(
 function reverseOneRule(tokens: string[], rule: Rule, sourcePhonemes: string[]): string[][] {
   const { from, to, leftContext, rightContext } = rule;
 
-  // Parse source and target as potentially multi-phoneme sequences
-  const fromSequence = from.split(/\s+/);
-  const toSequence = to === '' ? [] : to.split(/\s+/);
-  const toLength = toSequence.length;
+  const toLength = to.length;
 
   // Special case: deletion rule (from -> empty)
   // Reversing deletion is insertion, which can happen at any position
-  if (to === '') {
+  if (to.length === 0) {
     // For now, skip this case - it's complex and needs special handling
     return [tokens];
   }
@@ -125,7 +122,7 @@ function reverseOneRule(tokens: string[], rule: Rule, sourcePhonemes: string[]):
     // Check if the target sequence matches at position i
     let sequenceMatches = true;
     for (let j = 0; j < toLength; j++) {
-      if (tokens[i + j] !== toSequence[j]) {
+      if (tokens[i + j] !== to[j]) {
         sequenceMatches = false;
         break;
       }
@@ -157,7 +154,7 @@ function reverseOneRule(tokens: string[], rule: Rule, sourcePhonemes: string[]):
 
       if (posIndex !== -1 && (mask & (1 << posIndex))) {
         // Replace this occurrence with the source sequence
-        result.push(...fromSequence);
+        result.push(...from);
         i += toLength; // Skip the target sequence
       } else {
         result.push(tokens[i]);
@@ -177,17 +174,24 @@ function reverseOneRule(tokens: string[], rule: Rule, sourcePhonemes: string[]):
 function matchesContextTokens(
   tokens: string[],
   position: number,
-  leftContext: string | undefined,
-  rightContext: string | undefined
+  leftContext: string[] | undefined,
+  rightContext: string[] | undefined
 ): boolean {
   // Check left context
   if (leftContext !== undefined) {
-    if (leftContext === '#') {
+    if (leftContext.length === 1 && leftContext[0] === '#') {
       // Must be at word beginning
       if (position !== 0) return false;
     } else {
-      // Must be preceded by leftContext
-      if (position === 0 || tokens[position - 1] !== leftContext) {
+      // Must be preceded by the entire left context sequence
+      const contextLength = leftContext.length;
+      if (position >= contextLength) {
+        for (let j = 0; j < contextLength; j++) {
+          if (tokens[position - contextLength + j] !== leftContext[j]) {
+            return false;
+          }
+        }
+      } else {
         return false;
       }
     }
@@ -195,12 +199,19 @@ function matchesContextTokens(
 
   // Check right context
   if (rightContext !== undefined) {
-    if (rightContext === '#') {
+    if (rightContext.length === 1 && rightContext[0] === '#') {
       // Must be at word end
       if (position !== tokens.length - 1) return false;
     } else {
-      // Must be followed by rightContext
-      if (position === tokens.length - 1 || tokens[position + 1] !== rightContext) {
+      // Must be followed by the entire right context sequence
+      const contextLength = rightContext.length;
+      if (position + 1 + contextLength <= tokens.length) {
+        for (let j = 0; j < contextLength; j++) {
+          if (tokens[position + 1 + j] !== rightContext[j]) {
+            return false;
+          }
+        }
+      } else {
         return false;
       }
     }
@@ -216,17 +227,24 @@ function matchesContextForSequence(
   tokens: string[],
   position: number,
   sequenceLength: number,
-  leftContext: string | undefined,
-  rightContext: string | undefined
+  leftContext: string[] | undefined,
+  rightContext: string[] | undefined
 ): boolean {
   // Check left context (relative to the start of the sequence)
   if (leftContext !== undefined) {
-    if (leftContext === '#') {
+    if (leftContext.length === 1 && leftContext[0] === '#') {
       // Must be at word beginning
       if (position !== 0) return false;
     } else {
-      // Must be preceded by leftContext
-      if (position === 0 || tokens[position - 1] !== leftContext) {
+      // Must be preceded by the entire left context sequence
+      const contextLength = leftContext.length;
+      if (position >= contextLength) {
+        for (let j = 0; j < contextLength; j++) {
+          if (tokens[position - contextLength + j] !== leftContext[j]) {
+            return false;
+          }
+        }
+      } else {
         return false;
       }
     }
@@ -234,12 +252,19 @@ function matchesContextForSequence(
 
   // Check right context (relative to the end of the sequence)
   if (rightContext !== undefined) {
-    if (rightContext === '#') {
+    if (rightContext.length === 1 && rightContext[0] === '#') {
       // Must be at word end
       if (position + sequenceLength !== tokens.length) return false;
     } else {
-      // Must be followed by rightContext
-      if (position + sequenceLength >= tokens.length || tokens[position + sequenceLength] !== rightContext) {
+      // Must be followed by the entire right context sequence
+      const contextLength = rightContext.length;
+      if (position + sequenceLength + contextLength <= tokens.length) {
+        for (let j = 0; j < contextLength; j++) {
+          if (tokens[position + sequenceLength + j] !== rightContext[j]) {
+            return false;
+          }
+        }
+      } else {
         return false;
       }
     }
