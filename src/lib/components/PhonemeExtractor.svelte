@@ -3,9 +3,10 @@
 
   interface Props {
     rulesText: string;
+    onUsePhonemes?: (source: string, target: string) => void;
   }
 
-  let { rulesText }: Props = $props();
+  let { rulesText, onUsePhonemes }: Props = $props();
 
   let isExpanded = $state(false);
 
@@ -49,14 +50,30 @@
       alert(`${label} phonemes copied to clipboard!`);
     });
   }
+
+  // Use extracted phonemes in the input fields
+  function useExtractedPhonemes() {
+    if (onUsePhonemes) {
+      const source = formatPhonemes(result.source);
+      const target = formatPhonemes(result.target);
+      onUsePhonemes(source, target);
+    }
+  }
 </script>
 
 <div class="phoneme-extractor">
   <div class="header">
     <h3>📊 Phoneme Inventories</h3>
-    <button class="toggle-btn" onclick={() => isExpanded = !isExpanded}>
-      {isExpanded ? '▼ Hide' : '▶ Show'}
-    </button>
+    <div class="header-buttons">
+      {#if hasPhonemes && onUsePhonemes}
+        <button class="use-btn" onclick={useExtractedPhonemes}>
+          ⬆️ Use These Phonemes
+        </button>
+      {/if}
+      <button class="toggle-btn" onclick={() => isExpanded = !isExpanded}>
+        {isExpanded ? '▼ Hide' : '▶ Show'}
+      </button>
+    </div>
   </div>
 
   {#if isExpanded}
@@ -156,6 +173,12 @@
     margin-bottom: 1rem;
   }
 
+  .header-buttons {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+
   h3 {
     margin: 0;
     font-size: 1.1rem;
@@ -174,6 +197,22 @@
 
   .toggle-btn:hover {
     background: #e9ecef;
+  }
+
+  .use-btn {
+    padding: 0.25rem 0.75rem;
+    font-size: 0.85rem;
+    background: #4a90e2;
+    color: white;
+    border: 1px solid #4a90e2;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 500;
+  }
+
+  .use-btn:hover {
+    background: #357abd;
+    border-color: #357abd;
   }
 
   .error {

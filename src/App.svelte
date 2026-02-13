@@ -113,22 +113,50 @@
       // Load rules
       const rulesResponse = await fetch(ruleset.rulesFile);
       if (rulesResponse.ok) {
-        rulesText = await rulesResponse.text();
+        const text = await rulesResponse.text();
+        // Check if it's actually a rules file (not HTML 404 page)
+        if (!text.includes('<!DOCTYPE') && !text.includes('<html')) {
+          rulesText = text;
+        } else {
+          rulesText = '';
+        }
+      } else {
+        rulesText = '';
       }
 
-      // Load source phonemes
+      // Load source phonemes (clear if not found or if HTML)
       const sourceResponse = await fetch(ruleset.sourcePhonemes);
-      if (sourceResponse.ok) {
-        sourcePhonemes = await sourceResponse.text();
+      if (sourceResponse.ok && sourceResponse.status === 200) {
+        const text = await sourceResponse.text();
+        // Check if it's actually a phonemes file (not HTML 404 page)
+        if (!text.includes('<!DOCTYPE') && !text.includes('<html')) {
+          sourcePhonemes = text;
+        } else {
+          sourcePhonemes = '';
+        }
+      } else {
+        sourcePhonemes = '';
       }
 
-      // Load target phonemes
+      // Load target phonemes (clear if not found or if HTML)
       const targetResponse = await fetch(ruleset.targetPhonemes);
-      if (targetResponse.ok) {
-        targetPhonemes = await targetResponse.text();
+      if (targetResponse.ok && targetResponse.status === 200) {
+        const text = await targetResponse.text();
+        // Check if it's actually a phonemes file (not HTML 404 page)
+        if (!text.includes('<!DOCTYPE') && !text.includes('<html')) {
+          targetPhonemes = text;
+        } else {
+          targetPhonemes = '';
+        }
+      } else {
+        targetPhonemes = '';
       }
     } catch (e) {
       console.error('Failed to load ruleset:', e);
+      // Clear values on error
+      rulesText = '';
+      sourcePhonemes = '';
+      targetPhonemes = '';
     }
   }
 
@@ -303,6 +331,12 @@
       input.setSelectionRange(start + phoneme.length, start + phoneme.length);
     }, 0);
   }
+
+  // Use extracted phonemes from PhonemeExtractor
+  function handleUsePhonemes(source: string, target: string) {
+    sourcePhonemes = source;
+    targetPhonemes = target;
+  }
 </script>
 
 <main>
@@ -390,7 +424,7 @@
       </div>
 
       <!-- Phoneme Extractor -->
-      <PhonemeExtractor rulesText={rulesText} />
+      <PhonemeExtractor rulesText={rulesText} onUsePhonemes={handleUsePhonemes} />
       {/if}
 
       <div class="word-section">
