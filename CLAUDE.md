@@ -87,6 +87,7 @@ This will:
 - Backward: Works through rules in reverse order. For each rule "a > x", every "x" in the current word could be:
   - Replaced with "a" (reverse the rule)
   - Left as "x" (only if "x" is in the source phoneme set - meaning it wasn't transformed by this rule)
+- Deletion rule reversal: For deletion rules "h > ;" (forward: h is deleted), backward application inserts the deleted phoneme at all valid positions that match the context. Phonemes from deletion rules are automatically added to valid source phonemes.
 - Phoneme sets prevent explosion: Without phoneme sets, "xyx" with rules "a>x, c>x" generates 2³ = 8 combinations. With phoneme sets where "x" is not in the source set, we must replace all "x"s, giving only 4 valid results.
 - Uses greedy longest-match for multi-character phonemes (e.g., "th", "sh")
 

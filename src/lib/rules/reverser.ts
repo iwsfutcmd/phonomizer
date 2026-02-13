@@ -50,6 +50,17 @@ export function reverseRules(
   sourcePhonemes: string[],
   targetPhonemes: string[]
 ): string[] {
+  // Collect phonemes from deletion rules (they're valid source phonemes even if not listed)
+  // For deletion rules, the 'from' phoneme must have existed in the source language
+  const allSourcePhonemes = new Set<string>(sourcePhonemes);
+  for (const rule of rules) {
+    if (rule.to.length === 0) {
+      // Deletion rule: add 'from' phonemes as valid source phonemes
+      rule.from.forEach(p => allSourcePhonemes.add(p));
+    }
+  }
+  const expandedSourcePhonemes = Array.from(allSourcePhonemes);
+
   // Tokenize the target word
   let possibilityTokens: Set<string> = new Set([JSON.stringify(tokenize(word, targetPhonemes))]);
 
@@ -74,7 +85,7 @@ export function reverseRules(
     return tokens.join('');
   }).filter(p => {
     try {
-      tokenize(p, sourcePhonemes);
+      tokenize(p, expandedSourcePhonemes);
       return true;
     } catch {
       return false;
@@ -111,8 +122,28 @@ function reverseOneRule(tokens: string[], rule: Rule, sourcePhonemes: string[]):
   // Special case: deletion rule (from -> empty)
   // Reversing deletion is insertion, which can happen at any position
   if (to.length === 0) {
-    // For now, skip this case - it's complex and needs special handling
-    return [tokens];
+    const results: string[][] = [];
+
+    // The word could exist as-is (the phoneme was never there)
+    // Only if the phoneme is in the source phoneme set
+    const fromPhonemeInSource = from.every(p => sourcePhonemes.includes(p));
+    if (fromPhonemeInSource) {
+      results.push(tokens);
+    }
+
+    // Try inserting the deleted phoneme(s) at each valid position
+    for (let i = 0; i <= tokens.length; i++) {
+      // Check if this position matches the context
+      // For deletion rule, context is checked AFTER insertion
+      const testTokens = [...tokens.slice(0, i), ...from, ...tokens.slice(i)];
+
+      // The inserted sequence starts at position i
+      if (matchesContextForSequence(testTokens, i, from.length, leftContext, rightContext)) {
+        results.push(testTokens);
+      }
+    }
+
+    return results;
   }
 
   // Find all positions where the target sequence appears
