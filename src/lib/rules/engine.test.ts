@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { applyRules } from './engine';
 import { parseRules } from './parser';
-import type { Rule } from '../types';
+import type { Rule, PhonotacticPattern } from '../types';
 
 describe('applyRules (forward)', () => {
   it('should apply a single rule', () => {
@@ -200,6 +200,39 @@ describe('applyRules (forward)', () => {
       const rules: Rule[] = [{ from: ['t', 'h'], to: ['θ'], leftContext: ['#'] }];
       const result = applyRules('thathin', rules, ['t', 'h', 'a', 'i', 'n'], ['θ', 'a', 't', 'h', 'i', 'n']);
       expect(result).toBe('θathin'); // Only initial t-h becomes θ
+    });
+  });
+
+  describe('phonotactics integration', () => {
+    it('should throw if source word does not match source phonotactics', () => {
+      const rules: Rule[] = [{ from: ['a'], to: ['x'] }];
+      const sourcePhonotactics: PhonotacticPattern[] = [
+        { positions: [['p', 't'], ['a', 'i']] } // CV only
+      ];
+      expect(() => {
+        applyRules('abc', rules, ['a', 'b', 'c'], ['x', 'b', 'c'], sourcePhonotactics);
+      }).toThrow('does not match source phonotactic constraints');
+    });
+
+    it('should succeed when source word matches source phonotactics', () => {
+      const rules: Rule[] = [{ from: ['a'], to: ['x'] }];
+      const sourcePhonotactics: PhonotacticPattern[] = [
+        { positions: [['p'], ['a']] } // CV
+      ];
+      const result = applyRules('pa', rules, ['p', 'a'], ['p', 'x'], sourcePhonotactics);
+      expect(result).toBe('px');
+    });
+
+    it('should work with null phonotactics (unconstrained)', () => {
+      const rules: Rule[] = [{ from: ['a'], to: ['x'] }];
+      const result = applyRules('abc', rules, ['a', 'b', 'c'], ['x', 'b', 'c'], null, null);
+      expect(result).toBe('xbc');
+    });
+
+    it('should work when phonotactics not provided (backward compatible)', () => {
+      const rules: Rule[] = [{ from: ['a'], to: ['x'] }];
+      const result = applyRules('abc', rules, ['a', 'b', 'c'], ['x', 'b', 'c']);
+      expect(result).toBe('xbc');
     });
   });
 });

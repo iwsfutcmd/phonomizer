@@ -66,6 +66,7 @@ This will:
 3. Extract unique target phonemes (from the `to` field of each rule)
 4. Generate `source-lang.phonemes` and `target-lang.phonemes` files
 5. Sort phonemes alphabetically for consistency
+6. Preserve existing `[phonotactics]` sections when regenerating files that already have them
 
 ## Architecture
 
@@ -83,13 +84,18 @@ This will:
 - Backward application is non-deterministic (one target → multiple possible sources)
 
 **Key Algorithm Considerations**:
-- Forward: Simple string replacement/pattern matching for each rule. Validates that source word uses only source phonemes and rules map between valid phoneme sets.
+- Forward: Simple string replacement/pattern matching for each rule. Validates that source word uses only source phonemes and rules map between valid phoneme sets. Optionally validates source word against source phonotactic constraints.
 - Backward: Works through rules in reverse order. For each rule "a > x", every "x" in the current word could be:
   - Replaced with "a" (reverse the rule)
   - Left as "x" (only if "x" is in the source phoneme set - meaning it wasn't transformed by this rule)
 - Deletion rule reversal: For deletion rules "h > ;" (forward: h is deleted), backward application inserts the deleted phoneme at all valid positions that match the context. Phonemes from deletion rules are automatically added to valid source phonemes.
 - Phoneme sets prevent explosion: Without phoneme sets, "xyx" with rules "a>x, c>x" generates 2³ = 8 combinations. With phoneme sets where "x" is not in the source set, we must replace all "x"s, giving only 4 valid results.
+- Phonotactics further constrain backward results: candidates are filtered to only include words that match declared phonotactic patterns (valid word shapes).
 - Uses greedy longest-match for multi-character phonemes (e.g., "th", "sh")
+
+**Phonotactics** (`src/lib/phonotactics/`)
+- `parser.ts`: Parses `.phonemes` files, handling both legacy (flat list) and section-based formats with `[inventory]` and `[phonotactics]` sections. Resolves variables and expands patterns.
+- `matcher.ts`: Checks if a tokenized word matches any of the declared phonotactic patterns (OR logic). Returns true when phonotactics is null (unconstrained).
 
 **UI Components** (`src/lib/components/`)
 - `RuleEditor.svelte`: Input area for defining phonological rules
@@ -106,6 +112,9 @@ src/
 │   │   ├── parser.ts
 │   │   ├── engine.ts
 │   │   └── reverser.ts
+│   ├── phonotactics/   # Phonotactic constraint parsing and matching
+│   │   ├── parser.ts
+│   │   └── matcher.ts
 │   ├── components/     # Svelte UI components
 │   └── types/          # TypeScript type definitions
 ├── App.svelte          # Main application component
@@ -135,11 +144,19 @@ interface ReverseResult {
 interface PhonemeSet {
   phonemes: string[];
 }
+
+interface PhonotacticPattern {
+  positions: string[][];  // Each position is an array of allowed phonemes
+}
 ```
 
 **Internal Representation**: Rules are stored with array fields to correctly handle multi-phoneme sequences and contexts. The parser converts space-separated strings from the rule syntax into arrays during parsing.
 
-**Phoneme Parsing**: Phonemes are entered as space or comma-separated strings (e.g., "a b c" or "a, b, c"). Supports multi-character phonemes like "th", "sh", "ts".
+**Phoneme Parsing**: Phoneme files (`.phonemes`) support two formats:
+1. **Legacy (flat)**: Space or comma-separated phonemes on a single line (e.g., "a b c" or "a, b, c")
+2. **Section-based**: `[inventory]` section for phonemes and optional `[phonotactics]` section for word shape constraints
+
+Both formats support multi-character phonemes like "th", "sh", "ts".
 
 ## Technical Notes
 
@@ -411,3 +428,60 @@ SONORANT = [m n r l];
 - Negative sets work with multi-character phonemes: `![th sh]`
 
 **Note**: Negative sets are expanded at parse time like phoneme classes and variables. The Rule Engine and Reverser work with the fully expanded rules.
+
+## Phonemes File Format
+
+### Legacy Format
+
+A flat list of space or comma-separated phonemes:
+
+```
+a aː b d h i iː j k kʼ l m n p r s t w
+```
+
+### Section-Based Format
+
+Uses `[inventory]` and `[phonotactics]` sections. Backward compatible: files without section headers are treated as legacy format.
+
+```
+[inventory]
+a aː b d h i iː j k kʼ l m n p r s sʼ t tʼ u uː w x z
+
+[phonotactics]
+C = [b d h j k kʼ l m n p r s sʼ t tʼ w];
+V = [a aː i iː u uː];
+G = [j w];
+
+V;
+CV;
+CVC;
+CVGV;
+CVGVC;
+```
+
+### Phonotactics Section
+
+The `[phonotactics]` section defines valid word shapes (phonotactic patterns). It contains:
+
+**Variable definitions** (lines with `=`):
+- `C = [p t k];` — define a class of phonemes
+- `X = th;` — define a single phoneme alias
+- `STOPS = [VOICELESS VOICED];` — nested variable references (flattened)
+
+**Pattern lines** (lines without `=`):
+- Each line defines a valid word shape using variable names and phoneme names
+- `CV;` — a word must be one consonant followed by one vowel
+- `CVC;` — consonant-vowel-consonant
+- Trailing semicolons are optional
+- Patterns are tokenized using greedy longest-match against variable and phoneme names
+- A word is valid if it matches ANY declared pattern (OR logic)
+
+**How patterns work**:
+- Each position in a pattern expands to the set of allowed phonemes at that position
+- `CV` with `C = [p t]; V = [a i];` means: first phoneme must be p or t, second must be a or i
+- Literal phonemes can also appear in patterns: `Ca` means first position is C class, second position is literally "a"
+
+**Integration**:
+- Forward mode: source word is validated against source phonotactics (throws error if invalid)
+- Backward mode: candidate results are filtered to only include words matching source phonotactics
+- When phonotactics is null (no `[phonotactics]` section), no filtering is applied (unconstrained)

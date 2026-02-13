@@ -16,3 +16,7 @@ export interface ReverseResult {
 export interface PhonemeSet {
   phonemes: string[];
 }
+
+export interface PhonotacticPattern {
+  positions: string[][];  // Each position is an array of allowed phonemes
+}

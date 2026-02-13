@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { reverseRules } from './reverser';
 import { parseRules } from './parser';
-import type { Rule } from '../types';
+import type { Rule, PhonotacticPattern } from '../types';
 
 describe('reverseRules (backward)', () => {
   it('should reverse a single rule', () => {
@@ -223,6 +223,70 @@ describe('reverseRules (backward)', () => {
       // This is complex - should generate various possibilities
       expect(result.length).toBeGreaterThan(1);
       expect(result).toContain('aha'); // The original
+    });
+  });
+
+  describe('phonotactics integration', () => {
+    it('should filter results by source phonotactics', () => {
+      const rules: Rule[] = [
+        { from: ['a'], to: ['x'] },
+        { from: ['b'], to: ['y'] },
+        { from: ['c'], to: ['x'] }
+      ];
+      // Without phonotactics: xyx -> aba, abc, cba, cbc
+      // With CVC phonotactics: only words matching [a,c]-[b]-[a,c] pattern
+      const sourcePhonotactics: PhonotacticPattern[] = [
+        { positions: [['a', 'c'], ['b'], ['a', 'c']] } // CVC
+      ];
+      const result = reverseRules('xyx', rules, ['a', 'b', 'c'], ['x', 'y'], sourcePhonotactics);
+      // All 4 results (aba, abc, cba, cbc) match CVC
+      expect(result.sort()).toEqual(['aba', 'abc', 'cba', 'cbc'].sort());
+    });
+
+    it('should reduce results when phonotactics exclude some candidates', () => {
+      const rules: Rule[] = [
+        { from: ['a'], to: ['x'] },
+        { from: ['c'], to: ['x'] }
+      ];
+      // Without phonotactics: xx -> aa, ac, ca, cc
+      // With phonotactics that only allow [a]-[c]:
+      const sourcePhonotactics: PhonotacticPattern[] = [
+        { positions: [['a'], ['c']] }
+      ];
+      const result = reverseRules('xx', rules, ['a', 'c'], ['x'], sourcePhonotactics);
+      expect(result).toEqual(['ac']);
+    });
+
+    it('should return empty when no candidates match phonotactics', () => {
+      const rules: Rule[] = [{ from: ['a'], to: ['x'] }];
+      const sourcePhonotactics: PhonotacticPattern[] = [
+        { positions: [['b'], ['c']] } // patterns that can never match 'a'
+      ];
+      const result = reverseRules('x', rules, ['a', 'b', 'c'], ['x'], sourcePhonotactics);
+      expect(result).toEqual([]);
+    });
+
+    it('should work with null phonotactics (unconstrained)', () => {
+      const rules: Rule[] = [{ from: ['a'], to: ['x'] }];
+      const result = reverseRules('x', rules, ['a', 'b', 'c'], ['x'], null);
+      expect(result).toEqual(['a']);
+    });
+
+    it('should work when phonotactics not provided (backward compatible)', () => {
+      const rules: Rule[] = [{ from: ['a'], to: ['x'] }];
+      const result = reverseRules('x', rules, ['a', 'b', 'c'], ['x']);
+      expect(result).toEqual(['a']);
+    });
+
+    it('should filter deletion rule results by phonotactics', () => {
+      const rules: Rule[] = [{ from: ['h'], to: [] }];
+      // Without phonotactics: ello -> ello, hello, ehllo, elhlo, ellho, elloh
+      // With phonotactics allowing only CVCCV:
+      const sourcePhonotactics: PhonotacticPattern[] = [
+        { positions: [['h'], ['e'], ['l'], ['l'], ['o']] } // exactly "hello"
+      ];
+      const result = reverseRules('ello', rules, ['h', 'e', 'l', 'o'], ['e', 'l', 'o'], sourcePhonotactics);
+      expect(result).toEqual(['hello']);
     });
   });
 });

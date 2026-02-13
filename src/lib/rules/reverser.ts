@@ -1,4 +1,5 @@
-import type { Rule } from '../types';
+import type { Rule, PhonotacticPattern } from '../types';
+import { matchesPhonotactics } from '../phonotactics/matcher';
 
 /**
  * Tokenizes a word into phoneme tokens using greedy longest-match
@@ -42,13 +43,17 @@ function tokenize(word: string, phonemes: string[]): string[] {
  * @param rules - Array of rules that were applied
  * @param sourcePhonemes - Valid phonemes in the source language
  * @param targetPhonemes - Valid phonemes in the target language
+ * @param sourcePhonotactics - Optional phonotactic patterns for the source language
+ * @param targetPhonotactics - Optional phonotactic patterns for the target language
  * @returns Array of all possible source words
  */
 export function reverseRules(
   word: string,
   rules: Rule[],
   sourcePhonemes: string[],
-  targetPhonemes: string[]
+  targetPhonemes: string[],
+  sourcePhonotactics?: PhonotacticPattern[] | null,
+  targetPhonotactics?: PhonotacticPattern[] | null
 ): string[] {
   // Collect phonemes from deletion rules (they're valid source phonemes even if not listed)
   // For deletion rules, the 'from' phoneme must have existed in the source language
@@ -82,15 +87,19 @@ export function reverseRules(
   // Convert token arrays back to strings and filter to only valid source words
   const validPossibilities = Array.from(possibilityTokens).map(p => {
     const tokens = JSON.parse(p) as string[];
-    return tokens.join('');
-  }).filter(p => {
+    return { word: tokens.join(''), tokens };
+  }).filter(({ word: w, tokens }) => {
     try {
-      tokenize(p, expandedSourcePhonemes);
-      return true;
+      tokenize(w, expandedSourcePhonemes);
     } catch {
       return false;
     }
-  });
+    // Filter by source phonotactics if provided
+    if (sourcePhonotactics && !matchesPhonotactics(tokens, sourcePhonotactics)) {
+      return false;
+    }
+    return true;
+  }).map(({ word: w }) => w);
 
   return validPossibilities.sort();
 }

@@ -1,4 +1,5 @@
-import type { Rule } from '../types';
+import type { Rule, PhonotacticPattern } from '../types';
+import { matchesPhonotactics } from '../phonotactics/matcher';
 
 /**
  * Tokenizes a word into phoneme tokens using greedy longest-match
@@ -40,16 +41,25 @@ function tokenize(word: string, phonemes: string[]): string[] {
  * @param rules - Array of rules to apply in order
  * @param sourcePhonemes - Valid phonemes in the source language
  * @param targetPhonemes - Valid phonemes in the target language
+ * @param sourcePhonotactics - Optional phonotactic patterns for the source language
+ * @param targetPhonotactics - Optional phonotactic patterns for the target language
  * @returns The transformed target word
  */
 export function applyRules(
   word: string,
   rules: Rule[],
   sourcePhonemes: string[],
-  targetPhonemes: string[]
+  targetPhonemes: string[],
+  sourcePhonotactics?: PhonotacticPattern[] | null,
+  targetPhonotactics?: PhonotacticPattern[] | null
 ): string {
   // Tokenize the word into phonemes
   let tokens = tokenize(word, sourcePhonemes);
+
+  // Validate source word against source phonotactics
+  if (sourcePhonotactics && !matchesPhonotactics(tokens, sourcePhonotactics)) {
+    throw new Error(`Source word "${word}" does not match source phonotactic constraints`);
+  }
 
   // Note: We don't validate that rules use phonemes from the phoneme sets
   // because rules may use intermediate phonemes (phonemes produced by one rule

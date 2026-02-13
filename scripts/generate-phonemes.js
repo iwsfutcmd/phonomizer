@@ -12,7 +12,7 @@
  * - Intermediate phonemes (phonemes produced and consumed by rules)
  */
 
-import { readFileSync, writeFileSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { basename, dirname, join } from 'path';
 import { generatePhonemeFiles } from '../src/lib/utils/phoneme-extractor.ts';
 
@@ -29,6 +29,23 @@ function extractLanguageCodes(filename) {
     source: parts[0],
     target: parts[1]
   };
+}
+
+/**
+ * If the file already exists and has a [phonotactics] section,
+ * preserve it and write the new inventory in section format.
+ * Otherwise, just write the flat phoneme list.
+ */
+function mergeWithExistingPhonotactics(filePath, newPhonemes) {
+  if (!existsSync(filePath)) return newPhonemes;
+
+  const existing = readFileSync(filePath, 'utf-8');
+  const phonotacticsMatch = existing.match(/\[phonotactics\]\n([\s\S]*)/);
+
+  if (!phonotacticsMatch) return newPhonemes;
+
+  // Existing file has phonotactics - preserve it with section format
+  return `[inventory]\n${newPhonemes}\n\n[phonotactics]\n${phonotacticsMatch[1].trimEnd()}\n`;
 }
 
 function main() {
@@ -59,9 +76,9 @@ function main() {
     const sourceFile = join(phonemesDir, `${sourceLang}.phonemes`);
     const targetFile = join(phonemesDir, `${targetLang}.phonemes`);
 
-    // Write files
-    writeFileSync(sourceFile, result.source, 'utf-8');
-    writeFileSync(targetFile, result.target, 'utf-8');
+    // Write files, preserving existing [phonotactics] sections
+    writeFileSync(sourceFile, mergeWithExistingPhonotactics(sourceFile, result.source), 'utf-8');
+    writeFileSync(targetFile, mergeWithExistingPhonotactics(targetFile, result.target), 'utf-8');
 
     console.log('\n✅ Generated phoneme files:');
     console.log(`\n📄 Source (${sourceLang}): ${sourceFile}`);

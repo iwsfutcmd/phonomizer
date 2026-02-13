@@ -3,6 +3,7 @@
   import { parseRules } from './lib/rules/parser';
   import { applyRules } from './lib/rules/engine';
   import { reverseRules } from './lib/rules/reverser';
+  import { parsePhonemesFile } from './lib/phonotactics/parser';
   import PhonemeExtractor from './lib/components/PhonemeExtractor.svelte';
 
   interface RulesetData {
@@ -175,6 +176,23 @@
       .filter(p => p.length > 0);
   }
 
+  // Derived: parse phoneme files including phonotactics
+  // Wrapped in try-catch to prevent rendering crashes on invalid input
+  let parsedSourcePhonemes = $derived.by(() => {
+    try {
+      return parsePhonemesFile(sourcePhonemes);
+    } catch {
+      return { phonemes: parsePhonemes(sourcePhonemes), phonotactics: null };
+    }
+  });
+  let parsedTargetPhonemes = $derived.by(() => {
+    try {
+      return parsePhonemesFile(targetPhonemes);
+    } catch {
+      return { phonemes: parsePhonemes(targetPhonemes), phonotactics: null };
+    }
+  });
+
   async function handleApply() {
     error = '';
     result = '';
@@ -184,13 +202,15 @@
         result = await findCognates(inputWord, sourceLanguage, targetLanguage);
       } else {
         const rules = parseRules(rulesText);
-        const sourcePhonemeSet = parsePhonemes(sourcePhonemes);
-        const targetPhonemeSet = parsePhonemes(targetPhonemes);
+        const sourcePhonemeSet = parsedSourcePhonemes.phonemes;
+        const targetPhonemeSet = parsedTargetPhonemes.phonemes;
+        const sourcePT = parsedSourcePhonemes.phonotactics;
+        const targetPT = parsedTargetPhonemes.phonotactics;
 
         if (mode === 'forward') {
-          result = applyRules(inputWord, rules, sourcePhonemeSet, targetPhonemeSet);
+          result = applyRules(inputWord, rules, sourcePhonemeSet, targetPhonemeSet, sourcePT, targetPT);
         } else {
-          result = reverseRules(inputWord, rules, sourcePhonemeSet, targetPhonemeSet);
+          result = reverseRules(inputWord, rules, sourcePhonemeSet, targetPhonemeSet, sourcePT, targetPT);
         }
       }
     } catch (e) {
@@ -230,11 +250,13 @@
     const ancestorPhons = await ancestorPhonResp.text();
 
     const sourceRules = parseRules(sourceRulesText);
-    const sourcePhonSet = parsePhonemes(sourcePhons);
-    const ancestorPhonSet = parsePhonemes(ancestorPhons);
+    const parsedSourcePhons = parsePhonemesFile(sourcePhons);
+    const parsedAncestorPhons = parsePhonemesFile(ancestorPhons);
+    const sourcePhonSet = parsedSourcePhons.phonemes;
+    const ancestorPhonSet = parsedAncestorPhons.phonemes;
 
     // Step 1: Reverse source language rules to get proto-forms
-    const protoForms = reverseRules(word, sourceRules, ancestorPhonSet, sourcePhonSet);
+    const protoForms = reverseRules(word, sourceRules, ancestorPhonSet, sourcePhonSet, parsedAncestorPhons.phonotactics, parsedSourcePhons.phonotactics);
 
     // Load target ruleset
     const [targetRulesResp, targetPhonResp] = await Promise.all([
@@ -246,7 +268,8 @@
     const targetPhons = await targetPhonResp.text();
 
     const targetRules = parseRules(targetRulesText);
-    const targetPhonSet = parsePhonemes(targetPhons);
+    const parsedTargetPhons = parsePhonemesFile(targetPhons);
+    const targetPhonSet = parsedTargetPhons.phonemes;
 
     // Step 2: Apply target language rules to each proto-form
     const cognates = new Set<string>();
@@ -301,15 +324,14 @@
 
   // Get non-ASCII phonemes for the current mode
   function getNonAsciiPhonemes(): string[] {
-    let phonemeSet: string;
+    let phonemeList: string[];
 
     if (mode === 'cognates') {
-      phonemeSet = sourceLanguagePhonemes;
+      phonemeList = parsePhonemes(sourceLanguagePhonemes);
     } else {
-      phonemeSet = mode === 'forward' ? sourcePhonemes : targetPhonemes;
+      phonemeList = mode === 'forward' ? parsedSourcePhonemes.phonemes : parsedTargetPhonemes.phonemes;
     }
 
-    const phonemeList = parsePhonemes(phonemeSet);
     return phonemeList.filter(p => /[^\x00-\x7F]/.test(p));
   }
 
@@ -399,27 +421,35 @@
         <div class="phoneme-input">
           <label for="source-phonemes">
             <strong>Source Phonemes</strong>
-            <span class="hint">Space or comma separated</span>
+            <span class="hint">Space-separated, or use [inventory]/[phonotactics] sections</span>
           </label>
-          <input
+          <textarea
             id="source-phonemes"
-            type="text"
+            class="phoneme-textarea"
+            rows="2"
             bind:value={sourcePhonemes}
             placeholder="a b c"
-          />
+          ></textarea>
+          {#if parsedSourcePhonemes.phonotactics}
+            <span class="phonotactics-badge">{parsedSourcePhonemes.phonotactics.length} phonotactic pattern{parsedSourcePhonemes.phonotactics.length !== 1 ? 's' : ''}</span>
+          {/if}
         </div>
 
         <div class="phoneme-input">
           <label for="target-phonemes">
             <strong>Target Phonemes</strong>
-            <span class="hint">Space or comma separated</span>
+            <span class="hint">Space-separated, or use [inventory]/[phonotactics] sections</span>
           </label>
-          <input
+          <textarea
             id="target-phonemes"
-            type="text"
+            class="phoneme-textarea"
+            rows="2"
             bind:value={targetPhonemes}
             placeholder="x y"
-          />
+          ></textarea>
+          {#if parsedTargetPhonemes.phonotactics}
+            <span class="phonotactics-badge">{parsedTargetPhonemes.phonotactics.length} phonotactic pattern{parsedTargetPhonemes.phonotactics.length !== 1 ? 's' : ''}</span>
+          {/if}
         </div>
       </div>
 
@@ -613,6 +643,19 @@
   .phoneme-input {
     display: flex;
     flex-direction: column;
+  }
+
+  .phoneme-textarea {
+    min-height: 2.5rem;
+    max-height: 12rem;
+    resize: vertical;
+    font-size: 1rem;
+  }
+
+  .phonotactics-badge {
+    font-size: 0.8rem;
+    color: #4a90e2;
+    margin-top: 0.25rem;
   }
 
   label {
