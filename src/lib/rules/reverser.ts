@@ -72,7 +72,7 @@ export function reverseRules(
     // For each current possibility, find all ways to reverse this rule
     for (const current of possibilityTokens) {
       const tokens = JSON.parse(current) as string[];
-      const reversed = reverseOneRule(tokens, rule, sourcePhonemes);
+      const reversed = reverseOneRule(tokens, rule, expandedSourcePhonemes);
       reversed.forEach(r => newPossibilities.add(JSON.stringify(r)));
     }
 

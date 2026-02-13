@@ -13,7 +13,20 @@
       "Bash(git push:*)",
       "Bash(npm run generate-rulesets:*)",
       "Bash(git rm:*)",
-      "Bash(git restore:*)"
+      "Bash(git restore:*)",
+      "Bash(node -e:*)",
+      "Bash(for file in public/rules/*.phono)",
+      "Bash(do)",
+      "Bash(echo:*)",
+      "Bash(done)",
+      "Bash(npx tsx:*)",
+      "Bash(ls:*)",
+      "Bash(npm run generate-phonemes:*)",
+      "Bash(ɬ)",
+      "Bash(\" correctly identifies ʃ in target\n- Example: \"a)",
+      "Bash(b)",
+      "Bash(\" correctly identifies b in target\n\nTests: 108 tests passing \\(18 new phoneme extractor tests\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(\" would fail because string comparison \"t h\" === token\nnever matched individual phoneme tokens.\n\nMajor changes:\n- Update Rule interface to use string[] for all fields\n- Parser converts space-separated strings to arrays during rule creation\n- Engine matches context sequences by iterating through arrays\n- Reverser updated for array-based context matching\n- Phoneme extractor works directly with arrays\n- All 124 tests updated and passing \\(added 5 new multi-phoneme tests\\)\n\nExamples now working:\n- Multi-phoneme contexts: a > b / t h _;\n- Both sides: a > b / c d _ e f;\n- Word boundaries: t h > θ / # _;\n- Sequences: a j > e;\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
     ]
   }
 }

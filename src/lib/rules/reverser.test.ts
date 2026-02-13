@@ -203,9 +203,10 @@ describe('reverseRules (backward)', () => {
       const rules: Rule[] = [{ from: ['h'], to: [] }];
       const result = reverseRules('ello', rules, ['e', 'l', 'o'], ['e', 'l', 'o']);
 
-      // Should have insertions (h is inferred as valid from the rule)
-      // But NOT the original (since the original doesn't use h, and h wasn't in the original set)
-      expect(result.sort()).toEqual(['ehllo', 'elhlo', 'ellho', 'elloh', 'hello'].sort());
+      // Should have:
+      // 1. Insertions (h is inferred as valid from the rule)
+      // 2. The original 'ello' (valid source word that produces 'ello' since no h to delete)
+      expect(result.sort()).toEqual(['ehllo', 'elhlo', 'ello', 'ellho', 'elloh', 'hello'].sort());
     });
 
     it('should handle deletion in a multi-rule sequence', () => {
