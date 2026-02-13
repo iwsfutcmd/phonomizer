@@ -495,4 +495,95 @@ describe('parseRules', () => {
       });
     });
   });
+
+  describe('negative sets', () => {
+    it('should expand simple negative set in left context', () => {
+      const rules = parseRules('a > b / ![p t] _;');
+      // Should expand to all phonemes except p and t
+      // Phonemes in ruleset: a, b, p, t
+      // Negative set ![p t] expands to [a b]
+      expect(rules.length).toBe(2);
+      expect(rules).toContainEqual({ from: ['a'], to: ['b'], leftContext: ['a'] });
+      expect(rules).toContainEqual({ from: ['a'], to: ['b'], leftContext: ['b'] });
+    });
+
+    it('should expand negative set in right context', () => {
+      const rules = parseRules('a > b / _ ![x y];');
+      // Phonemes: a, b, x, y
+      // ![x y] expands to [a b]
+      expect(rules.length).toBe(2);
+      expect(rules).toContainEqual({ from: ['a'], to: ['b'], rightContext: ['a'] });
+      expect(rules).toContainEqual({ from: ['a'], to: ['b'], rightContext: ['b'] });
+    });
+
+    it('should expand negative set on both sides', () => {
+      const rules = parseRules('a > b / ![p] _ ![q];');
+      // Phonemes: a, b, p, q
+      // ![p] expands to [a b q]
+      // ![q] expands to [a b p]
+      expect(rules.length).toBe(9); // 3 * 3 = 9
+    });
+
+    it('should work with multi-character phonemes in negative set', () => {
+      const rules = parseRules('a > b / ![th sh] _;');
+      // Phonemes: a, b, th, sh
+      // ![th sh] expands to [a b]
+      expect(rules.length).toBe(2);
+      expect(rules).toContainEqual({ from: ['a'], to: ['b'], leftContext: ['a'] });
+      expect(rules).toContainEqual({ from: ['a'], to: ['b'], leftContext: ['b'] });
+    });
+
+    it('should combine negative set with regular class', () => {
+      const rules = parseRules('[a e] > [x y] / ![p t] _;');
+      // Phonemes: a, e, x, y, p, t
+      // ![p t] expands to [a e x y]
+      // Combined with [a e] > [x y], we get 2 * 4 = 8 rules
+      expect(rules.length).toBe(8);
+    });
+
+    it('should work with variables containing negative sets', () => {
+      const rules = parseRules(`
+        C = [p t k];
+        V = [a e i];
+        V > x / ![C] _;
+      `);
+      // After variable substitution: V > x / ![[p t k]] _;
+      // Which becomes: V > x / ![p t k] _;
+      // Phonemes: p, t, k, a, e, i, x
+      // ![p t k] expands to [a e i x]
+      // V expands to [a e i]
+      // So we get 3 * 4 = 12 rules
+      expect(rules.length).toBe(12);
+    });
+
+    it('should handle empty negative set (all phonemes)', () => {
+      const rules = parseRules('a > b / ![] _;');
+      // Empty negative set expands to all phonemes
+      // Phonemes: a, b
+      expect(rules.length).toBe(2);
+      expect(rules).toContainEqual({ from: ['a'], to: ['b'], leftContext: ['a'] });
+      expect(rules).toContainEqual({ from: ['a'], to: ['b'], leftContext: ['b'] });
+    });
+
+    it('should throw error if negative set excludes all phonemes', () => {
+      expect(() => {
+        parseRules('a > b / ![a b] _;');
+      }).toThrow('excludes all phonemes');
+    });
+
+    it('should handle word boundary in negative set context', () => {
+      const rules = parseRules('a > b / ![#] _;');
+      // Phonemes: a, b, # (but # is filtered out in collectAllPhonemes)
+      // So ![#] expands to [a b]
+      expect(rules.length).toBe(2);
+    });
+
+    it('should work in complex context with multiple negative sets', () => {
+      const rules = parseRules('a > b / ![p] _ ![q];');
+      // Phonemes: a, b, p, q
+      // ![p] expands to [a b q]
+      // ![q] expands to [a b p]
+      expect(rules.length).toBe(9);
+    });
+  });
 });

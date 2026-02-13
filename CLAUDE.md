@@ -355,3 +355,59 @@ STOPS > FRICATIVES;     # p>f, t>θ, k>s
 - All other variable usage follows the same rules as phoneme classes
 
 **Note**: Variables are a syntactic convenience that expand at parse time. The Rule Engine and Reverser work with the fully expanded rules, keeping the core logic simple.
+
+### Negative Sets
+
+Format: `![phoneme1 phoneme2 ...]` - matches any phoneme EXCEPT the listed ones
+
+Negative sets allow you to specify contexts that apply when a phoneme is NOT one of the specified phonemes. They can only be used in contexts (left or right of the `_` placeholder).
+
+**Basic usage**:
+```
+# a becomes b when NOT after p or t
+a > b / ![p t] _;
+
+# e becomes i when NOT before m or n
+e > i / _ ![m n];
+
+# o becomes u when NOT after s/z AND NOT before r/l
+o > u / ![s z] _ ![r l];
+```
+
+**With variables**:
+```
+VOICELESS = [p t k];
+VOICED = [b d g];
+
+# Voiceless stops voice when NOT before other voiceless stops
+VOICELESS > VOICED / _ ![VOICELESS];
+```
+
+**How it works**:
+- Negative sets expand at **parse time** based on phonemes mentioned in the ruleset
+- `![p t k]` expands to all phonemes in the ruleset EXCEPT p, t, and k
+- The "universe" of phonemes is automatically collected from all rules and variables
+- This ensures expansion happens once, keeping the engine simple and fast
+
+**Important**: The phoneme universe is inferred from the ruleset itself. To ensure `![p t k]` matches against all relevant phonemes, make sure those phonemes appear somewhere in your ruleset (in variables or rules).
+
+**Examples**:
+```
+# Declare phoneme inventory (optional but recommended)
+C = [p t k b d g];
+V = [a e i o u];
+SONORANT = [m n r l];
+
+# Voicing before sonorants (NOT before stops)
+[p t k] > [b d g] / _ ![C];
+
+# This expands to rules matching contexts: a, e, i, o, u, m, n, r, l
+# (all phonemes except p, t, k, b, d, g)
+```
+
+**Validation**:
+- Empty negative set `![]` expands to all phonemes in the universe
+- If a negative set excludes all phonemes, an error is thrown
+- Negative sets work with multi-character phonemes: `![th sh]`
+
+**Note**: Negative sets are expanded at parse time like phoneme classes and variables. The Rule Engine and Reverser work with the fully expanded rules.

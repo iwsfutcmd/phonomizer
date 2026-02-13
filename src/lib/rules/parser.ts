@@ -407,6 +407,128 @@ function expandRule(baseRule: { from: string; to: string; leftContext?: string; 
 
   return expandedRules;
 }
+
+/**
+ * Collects all phonemes mentioned in the ruleset
+ * This is used as the "universe" for expanding negative sets
+ */
+function collectAllPhonemes(
+  variables: Map<string, string>,
+  ruleLines: string[]
+): Set<string> {
+  const phonemes = new Set<string>();
+
+  // Extract phonemes from a string (handles classes and space-separated lists)
+  function extractPhonemes(str: string): void {
+    // Remove brackets to get the content
+    const withoutBrackets = str.replace(/\[|\]/g, ' ');
+    // Split by spaces and filter out empty strings and special markers
+    const tokens = withoutBrackets.split(/\s+/).filter(t =>
+      t && t !== '_' && t !== '#' && t !== '!' && !t.startsWith('!')
+    );
+    tokens.forEach(t => phonemes.add(t));
+  }
+
+  // Collect from variables
+  for (const value of variables.values()) {
+    extractPhonemes(value);
+  }
+
+  // Collect from rule lines
+  for (const line of ruleLines) {
+    // Remove semicolon and split by / to get main part and context
+    const withoutSemicolon = line.replace(';', '');
+    const parts = withoutSemicolon.split('/');
+
+    // Extract from main part (from > to)
+    const mainPart = parts[0] || '';
+    const [from, to] = mainPart.split('>').map(s => s.trim());
+    if (from) extractPhonemes(from);
+    if (to) extractPhonemes(to);
+
+    // Extract from context (if present)
+    if (parts[1]) {
+      extractPhonemes(parts[1]);
+    }
+  }
+
+  return phonemes;
+}
+
+/**
+ * Expands a negative set ![a b c] to a positive set containing all phonemes except a, b, c
+ */
+function expandNegativeSet(negativeSet: string, universe: Set<string>): string {
+  // Extract the content of the negative set (remove ![ and ])
+  const content = negativeSet.slice(2, -1).trim();
+
+  if (content === '') {
+    // ![  ] (empty negative set) expands to all phonemes
+    return `[${Array.from(universe).join(' ')}]`;
+  }
+
+  // Get the phonemes to exclude
+  // Use flattenNestedClass to handle cases like ![[p t k]] (from variable substitution)
+  const toExcludeArray = flattenNestedClass(`[${content}]`).filter(p => p !== undefined) as string[];
+  const toExclude = new Set(toExcludeArray);
+
+  // Compute the complement
+  const complement = Array.from(universe).filter(p => !toExclude.has(p));
+
+  if (complement.length === 0) {
+    throw new Error(`Negative set ${negativeSet} excludes all phonemes - no phonemes left`);
+  }
+
+  return `[${complement.join(' ')}]`;
+}
+
+/**
+ * Expands negative sets in a string by replacing ![...] with [...complement...]
+ */
+function expandNegativeSets(str: string, universe: Set<string>): string {
+  // Find all negative sets: ![...]
+  // Need to handle nested brackets carefully
+  let result = str;
+
+  while (true) {
+    // Find the next ![
+    const bangBracketIndex = result.indexOf('![');
+    if (bangBracketIndex === -1) break;
+
+    // Find the matching ]
+    // Start after the ![ (at position bangBracketIndex + 2)
+    let depth = 0;
+    let endIndex = -1;
+
+    for (let i = bangBracketIndex + 2; i < result.length; i++) {
+      if (result[i] === '[') {
+        depth++;
+      } else if (result[i] === ']') {
+        if (depth === 0) {
+          endIndex = i;
+          break;
+        }
+        depth--;
+      }
+    }
+
+    if (endIndex === -1) {
+      throw new Error(`Unclosed negative set starting at position ${bangBracketIndex}`);
+    }
+
+    // Extract the negative set
+    const negativeSet = result.substring(bangBracketIndex, endIndex + 1);
+
+    // Expand it
+    const expanded = expandNegativeSet(negativeSet, universe);
+
+    // Replace in the result
+    result = result.substring(0, bangBracketIndex) + expanded + result.substring(endIndex + 1);
+  }
+
+  return result;
+}
+
 export function parseRules(rulesText: string): Rule[] {
   const lines = rulesText.split('\n');
 
@@ -433,12 +555,21 @@ export function parseRules(rulesText: string): Rule[] {
   // Phase 2: Resolve variable references
   const resolvedVars = resolveVariables(variables);
 
-  // Phase 3: Parse rules with variable substitution
+  // Phase 3: Collect all phonemes (for negative set expansion)
+  const substitutedLines = ruleLines.map(({ line }) =>
+    substituteVariables(line, resolvedVars)
+  );
+  const allPhonemes = collectAllPhonemes(resolvedVars, substitutedLines);
+
+  // Phase 4: Parse rules with variable substitution and negative set expansion
   const rules: Rule[] = [];
 
   for (const { line, lineNum } of ruleLines) {
     // Substitute variables
-    const substituted = substituteVariables(line, resolvedVars);
+    let substituted = substituteVariables(line, resolvedVars);
+
+    // Expand negative sets
+    substituted = expandNegativeSets(substituted, allPhonemes);
 
     // Check for semicolon
     if (!substituted.endsWith(';')) {
