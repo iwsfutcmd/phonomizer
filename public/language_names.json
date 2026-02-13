@@ -4,5 +4,7 @@
   "arb": "Arabic",
   "gez": "Ge'ez",
   "hbo": "Biblical Hebrew",
-  "syc": "Syriac"
+  "syc": "Syriac",
+  "ltc-x-wiki": "Middle Chinese (Wiktionary codes)",
+  "ltc-Latn": "Middle Chinese (Baxter)"
 }
