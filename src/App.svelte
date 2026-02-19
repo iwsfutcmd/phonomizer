@@ -14,8 +14,6 @@
   interface Ruleset extends RulesetData {
     id: string;
     rulesFile: string;
-    sourcePhonemes: string;
-    targetPhonemes: string;
   }
 
   // Helper function to create a full Ruleset from minimal data
@@ -25,9 +23,20 @@
       ...data,
       id,
       rulesFile: `/rules/${id}.phono`,
-      sourcePhonemes: `/phonemes/${data.source}.phonemes`,
-      targetPhonemes: `/phonemes/${data.target}.phonemes`
     };
+  }
+
+  // Fetch phonemes text for a language code.
+  // Tries .phonotactics first (preferred), then falls back to .phonemes.
+  async function fetchPhonemesText(langCode: string): Promise<string> {
+    for (const ext of ['.phonotactics', '.phonemes']) {
+      const res = await fetch(`/phonemes/${langCode}${ext}`);
+      if (res.ok) {
+        const text = await res.text();
+        if (!text.includes('<!DOCTYPE') && !text.includes('<html')) return text;
+      }
+    }
+    return '';
   }
 
   let rulesets = $state<Ruleset[]>([]);
@@ -63,8 +72,9 @@
     return `${sourceName} → ${targetName}`;
   }
 
-  // Discover all rule files at build time using Vite's glob
-  const ruleFiles = import.meta.glob('/public/rules/*.phono', { eager: false, query: '?url', import: 'default' });
+  // Discover all rule files at build time using Vite's glob.
+  // Files in subdirectories (e.g. alpha/) are excluded from the UI.
+  const ruleFiles = import.meta.glob('/public/rules/**/*.phono', { eager: false, query: '?url', import: 'default' });
 
   // Load available rulesets and languages on mount
   onMount(async () => {
@@ -75,8 +85,9 @@
         languages = await languagesResponse.json();
       }
 
-      // Extract rulesets from discovered rule files
+      // Extract rulesets from discovered rule files, excluding alpha/ subdirectory
       const rulesetData: RulesetData[] = Object.keys(ruleFiles)
+        .filter(path => !path.includes('/alpha/'))
         .map(path => {
           // Extract filename from path: /public/rules/sem-pro_akk.phono -> sem-pro_akk
           const filename = path.split('/').pop()?.replace('.phono', '');
@@ -125,33 +136,9 @@
         rulesText = '';
       }
 
-      // Load source phonemes (clear if not found or if HTML)
-      const sourceResponse = await fetch(ruleset.sourcePhonemes);
-      if (sourceResponse.ok && sourceResponse.status === 200) {
-        const text = await sourceResponse.text();
-        // Check if it's actually a phonemes file (not HTML 404 page)
-        if (!text.includes('<!DOCTYPE') && !text.includes('<html')) {
-          sourcePhonemes = text;
-        } else {
-          sourcePhonemes = '';
-        }
-      } else {
-        sourcePhonemes = '';
-      }
-
-      // Load target phonemes (clear if not found or if HTML)
-      const targetResponse = await fetch(ruleset.targetPhonemes);
-      if (targetResponse.ok && targetResponse.status === 200) {
-        const text = await targetResponse.text();
-        // Check if it's actually a phonemes file (not HTML 404 page)
-        if (!text.includes('<!DOCTYPE') && !text.includes('<html')) {
-          targetPhonemes = text;
-        } else {
-          targetPhonemes = '';
-        }
-      } else {
-        targetPhonemes = '';
-      }
+      // Load source and target phonemes (try .phonotactics first, then .phonemes)
+      sourcePhonemes = await fetchPhonemesText(ruleset.source);
+      targetPhonemes = await fetchPhonemesText(ruleset.target);
     } catch (e) {
       console.error('Failed to load ruleset:', e);
       // Clear values on error
@@ -239,15 +226,13 @@
     }
 
     // Load source ruleset
-    const [sourceRulesResp, sourcePhonResp, ancestorPhonResp] = await Promise.all([
-      fetch(sourceRuleset.rulesFile),
-      fetch(sourceRuleset.targetPhonemes),
-      fetch(sourceRuleset.sourcePhonemes)
+    const [sourceRulesResp, sourcePhons, ancestorPhons] = await Promise.all([
+      fetch(sourceRuleset.rulesFile).then(r => r.text()),
+      fetchPhonemesText(sourceRuleset.target),
+      fetchPhonemesText(sourceRuleset.source)
     ]);
 
-    const sourceRulesText = await sourceRulesResp.text();
-    const sourcePhons = await sourcePhonResp.text();
-    const ancestorPhons = await ancestorPhonResp.text();
+    const sourceRulesText = sourceRulesResp;
 
     const sourceRules = parseRules(sourceRulesText);
     const parsedSourcePhons = parsePhonemesFile(sourcePhons);
@@ -259,13 +244,10 @@
     const protoForms = reverseRules(word, sourceRules, ancestorPhonSet, sourcePhonSet, parsedAncestorPhons.phonotactics, parsedSourcePhons.phonotactics);
 
     // Load target ruleset
-    const [targetRulesResp, targetPhonResp] = await Promise.all([
-      fetch(targetRuleset.rulesFile),
-      fetch(targetRuleset.targetPhonemes)
+    const [targetRulesText, targetPhons] = await Promise.all([
+      fetch(targetRuleset.rulesFile).then(r => r.text()),
+      fetchPhonemesText(targetRuleset.target)
     ]);
-
-    const targetRulesText = await targetRulesResp.text();
-    const targetPhons = await targetPhonResp.text();
 
     const targetRules = parseRules(targetRulesText);
     const parsedTargetPhons = parsePhonemesFile(targetPhons);
@@ -313,10 +295,7 @@
     if (!ruleset) return;
 
     try {
-      const response = await fetch(ruleset.targetPhonemes);
-      if (response.ok) {
-        sourceLanguagePhonemes = await response.text();
-      }
+      sourceLanguagePhonemes = await fetchPhonemesText(ruleset.target);
     } catch (e) {
       console.error('Failed to load source language phonemes:', e);
     }

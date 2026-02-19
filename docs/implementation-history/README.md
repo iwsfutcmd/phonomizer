@@ -23,7 +23,7 @@ This directory contains historical documentation from feature implementations. T
 
 For current, up-to-date documentation, see:
 - **`/CLAUDE.md`** - Main project documentation with complete rule syntax reference
-- **`/README.md`** - Project README (to be updated)
+- **`/README.md`** - Project README
 
 ## Notes
 

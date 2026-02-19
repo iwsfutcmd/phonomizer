@@ -38,13 +38,13 @@ p t k a e i
 [phonotactics]
 C = [p t k];
 V = [a e i];
-CV
-CVC
+C V
+C V C
     `;
     const result = parsePhonemeFile(content);
 
     expect(result.inventory).toEqual(['p', 't', 'k', 'a', 'e', 'i']);
-    expect(result.patterns).toEqual(['CV', 'CVC']);
+    expect(result.patterns).toEqual(['C V', 'C V C']);
     expect(result.variables.get('C')).toBe('[p t k]');
     expect(result.variables.get('V')).toBe('[a e i]');
   });
@@ -58,13 +58,13 @@ p a
 C = [p];
 V = [a];
 V
-CV
-CVC
-CVCVC
+C V
+C V C
+C V C V C
     `;
     const result = parsePhonemeFile(content);
 
-    expect(result.patterns).toEqual(['V', 'CV', 'CVC', 'CVCVC']);
+    expect(result.patterns).toEqual(['V', 'C V', 'C V C', 'C V C V C']);
   });
 
   it('should skip comments and empty lines', () => {
@@ -82,13 +82,13 @@ C = [p t k];
 V = [a e i];
 
 # Valid patterns
-CV
-CVC
+C V
+C V C
     `;
     const result = parsePhonemeFile(content);
 
     expect(result.inventory).toEqual(['p', 't', 'k', 'a', 'e', 'i']);
-    expect(result.patterns).toEqual(['CV', 'CVC']);
+    expect(result.patterns).toEqual(['C V', 'C V C']);
   });
 });
 
@@ -109,7 +109,7 @@ p t k a e i
 [phonotactics]
 C = [p t k];
 V = [a e i];
-CV
+C V
     `;
     const data = parsePhonemeFile(content);
 
@@ -131,8 +131,8 @@ p t k a e i
 C = [p t k];
 V = [a e i];
 V
-CV
-CVC
+C V
+C V C
     `;
     const data = parsePhonemeFile(content);
 
@@ -152,7 +152,7 @@ th sh a e i
 [phonotactics]
 C = [th sh];
 V = [a e i];
-CV
+C V
     `;
     const data = parsePhonemeFile(content);
 
@@ -174,7 +174,7 @@ t1 t2
 I = [i1 i2 i3];
 F = [f1 f2 f3];
 T = [t1 t2];
-IFT
+I F T
     `;
     const data = parsePhonemeFile(content);
 
@@ -195,10 +195,10 @@ p t k a e i m n
 C = [p t k];
 V = [a e i];
 N = [m n];
-CV
-CVC
-CVN
-CVCVC
+C V
+C V C
+C V N
+C V C V C
     `;
     const data = parsePhonemeFile(content);
 
@@ -218,7 +218,7 @@ p t a e
 [phonotactics]
 C = [p t];
 V = [a e];
-CV
+C V
     `;
     const data = parsePhonemeFile(content);
 

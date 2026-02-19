@@ -1,6 +1,6 @@
 # Phonomizer
 
-A powerful web application for applying historical phonological rules to words, both forward and backward.
+A web application for applying historical phonological rules to words, both forward and backward.
 
 ## What is Phonomizer?
 
@@ -11,27 +11,29 @@ Phonomizer is a tool for linguists, conlangers, and language enthusiasts to mode
 
 ## Features
 
-✨ **Comprehensive Rule Syntax**
-- Simple unconditional rules: `a > e;`
-- Context-sensitive rules: `t > d / _ #;` (word-final)
-- Multi-phoneme sequences: `a i > e;`
-- Phoneme classes: `[p t k] > [b d g];`
-- Named variables: `STOPS = [p t k];`
-- Nested variable references
+**Comprehensive Rule Syntax**
+- Simple unconditional rules: `a > e`
+- Context-sensitive rules: `t > d / _ #` (word-final)
+- Multi-phoneme sequences: `a i > e`
+- Deletion: `h > ∅`
+- Phoneme classes: `[p t k] > [b d g]`
+- Named variables: `STOPS = [p t k]`
+- Negative sets: `a > b / ![p t] _` (not after p or t)
+- Optional contexts: `a > b / (c) _` (optionally after c)
 
-🔄 **Bidirectional Processing**
+**Bidirectional Processing**
 - Forward: Apply rules to evolve words
 - Backward: Reverse-engineer possible source forms
 
-🎯 **Phoneme Set Constraints**
+**Phoneme Set Constraints**
 - Define valid phoneme inventories for source and target languages
 - Prevents combinatorial explosion in backward mode
 - Ensures linguistically plausible results
 
-🚀 **Modern Tech Stack**
-- Built with Svelte 5 and TypeScript
-- Fast, responsive UI with hot module replacement
-- Comprehensive test coverage (90+ tests)
+**Phonotactics**
+- Declare valid word shapes (e.g., CVC, CV) in `.phonemes` files
+- Forward mode validates source words against phonotactic constraints
+- Backward mode filters results to only valid word shapes
 
 ## Quick Start
 
@@ -58,72 +60,103 @@ npm run dev
 
 ## Rule Syntax
 
+Rules do not require trailing semicolons (they are accepted but ignored).
+
 ### Simple Rules
 
 ```
-a > e;          # a becomes e
-th > θ;         # multi-character phonemes supported
-x > ;           # deletion (empty target)
+a > e           # a becomes e
+th > θ          # multi-character phonemes supported
+h > ∅           # deletion (h is removed)
 ```
 
 ### Context-Sensitive Rules
 
 ```
 # Word boundaries
-w > v / # _;    # w becomes v at word start
-t > d / _ #;    # t becomes d at word end
+w > v / # _     # w becomes v at word start
+t > d / _ #     # t becomes d at word end
 
 # Phoneme context
-k > g / n _;    # k becomes g after n
-a > e / b _ c;  # a becomes e between b and c
+k > g / n _     # k becomes g after n
+a > e / b _ c   # a becomes e between b and c
 ```
 
 ### Multi-Phoneme Sequences
 
 ```
-a i > e;        # sequence "ai" contracts to "e"
-e > a j;        # e expands to sequence "aj"
-a i > e i;      # transform sequence to sequence
+a i > e         # sequence "ai" contracts to "e"
+e > a j         # e expands to sequence "aj"
+a i > e i       # transform sequence to sequence
 ```
 
 ### Phoneme Classes
 
 ```
 # Simple expansion
-[p b] > p;                  # both p and b become p
+[p b] > p                   # both p and b become p
 
 # Paired mapping (positional)
-[p t k] > [b d g];          # p→b, t→d, k→g
+[p t k] > [b d g]           # p→b, t→d, k→g
 
 # Classes in context
-[p t k] > [b d g] / [m n] _;  # voicing after nasals
+[p t k] > [b d g] / [m n] _ # voicing after nasals
 ```
 
 ### Variables
 
 ```
 # Define variables
-VOICELESS_STOPS = [p t k];
-VOICED_STOPS = [b d g];
-VOWELS = [a e i o u];
+VOICELESS = [p t k]
+VOICED = [b d g]
+VOWELS = [a e i o u]
 
 # Use in rules
-VOICELESS_STOPS > VOICED_STOPS;  # p→b, t→d, k→g
+VOICELESS > VOICED          # p→b, t→d, k→g
 
 # Nested references
-LABIAL = [p b];
-ALVEOLAR = [t d];
-ALL_STOPS = [LABIAL ALVEOLAR];
-ALL_STOPS > ʔ;
+LABIAL = [p b]
+ALVEOLAR = [t d]
+ALL_STOPS = [LABIAL ALVEOLAR]
+ALL_STOPS > ʔ
+```
+
+### Negative Sets
+
+```
+# a becomes b when NOT after p or t
+a > b / ![p t] _
+
+# e becomes i when NOT before m or n
+e > i / _ ![m n]
+
+# Works with variables too
+VOICELESS > VOICED / _ ![VOICELESS]
+```
+
+Negative sets expand at parse time to all phonemes in the ruleset except the excluded ones.
+
+### Optional Contexts
+
+```
+# a becomes b, optionally preceded by c
+a > b / (c) _               # expands to: a>b/c_ and a>b/_
+
+# Optional on both sides (Cartesian product)
+a > b / (c) _ (d)           # expands to 4 rules
+
+# Nested optional
+a > b / (c (d)) _           # expands to 3 rules: cd, c, or nothing
+
+# Optional with class inside
+a > b / ([x y]) _           # expands to 3 rules: x, y, or nothing
 ```
 
 ### Comments
 
 ```
 # Lines starting with # are comments
-# They are ignored by the parser
-
-a > e;  # Comments must be on their own line
+a > e           # comments must be on their own line
 ```
 
 ## Examples
@@ -132,32 +165,32 @@ a > e;  # Comments must be on their own line
 
 ```
 # Proto-Indo-European to Proto-Germanic
-VOICELESS = [p t k];
-VOICED = [b d g];
-ASPIRATED = [bʰ dʰ gʰ];
-FRICATIVES = [f θ x];
+VOICELESS = [p t k]
+VOICED = [b d g]
+ASPIRATED = [bʰ dʰ gʰ]
+FRICATIVES = [f θ x]
 
 # First shift: voiceless stops → fricatives
-VOICELESS > FRICATIVES;
+VOICELESS > FRICATIVES
 
 # Second shift: voiced stops → voiceless stops
-VOICED > VOICELESS;
+VOICED > VOICELESS
 
 # Third shift: aspirated stops → voiced stops
-ASPIRATED > VOICED;
+ASPIRATED > VOICED
 ```
 
 ### Vowel Changes
 
 ```
 # Define vowel sets
-SHORT_VOWELS = [a e i o u];
-LONG_VOWELS = [ā ē ī ō ū];
+SHORT_VOWELS = [a e i o u]
+LONG_VOWELS = [ā ē ī ō ū]
 
 # Great Vowel Shift (simplified)
-ī > aɪ;
-ē > iː;
-ā > eɪ;
+ī > aɪ
+ē > iː
+ā > eɪ
 ```
 
 ## Development
@@ -182,6 +215,9 @@ npm run build
 
 # Preview production build
 npm run preview
+
+# Generate phoneme files from a ruleset
+npm run generate-phonemes public/rules/my-ruleset.phono
 ```
 
 ### Project Structure
@@ -194,36 +230,68 @@ phonomizer/
 │   │   │   ├── parser.ts   # Parse rule syntax
 │   │   │   ├── engine.ts   # Forward application
 │   │   │   └── reverser.ts # Backward application
+│   │   ├── phonotactics/   # Phonotactic constraint parsing and matching
+│   │   │   ├── parser.ts
+│   │   │   └── matcher.ts
 │   │   ├── components/     # Svelte UI components
 │   │   └── types/          # TypeScript definitions
 │   ├── App.svelte          # Main app component
 │   └── main.ts             # Entry point
 ├── public/
-│   └── rules/              # Example rulesets
-├── docs/                   # Documentation
-└── tests/                  # Test files
+│   ├── rules/              # Example rulesets (.phono)
+│   └── phonemes/           # Phoneme inventory files (.phonemes)
+└── docs/                   # Documentation
 ```
 
 ### Testing
 
-The project has comprehensive test coverage:
+The project has comprehensive test coverage (190+ tests):
 
-- Parser tests: Rule syntax parsing, variables, classes
-- Engine tests: Forward rule application
-- Reverser tests: Backward rule application
+- Parser tests: Rule syntax parsing, variables, classes, optional groups, negative sets
+- Engine tests: Forward rule application, multi-phoneme sequences, context matching
+- Reverser tests: Backward application, deletion reversal, phonotactics filtering
+- Phonotactics tests: Pattern parsing and matching
 
 ```bash
-# Run all tests
 npm test
-
-# Watch mode for development
-npm run test:watch
 ```
 
-## Documentation
+## Phoneme File Formats
 
-- **[CLAUDE.md](CLAUDE.md)** - Complete rule syntax reference and project documentation
-- **[docs/implementation-history/](docs/implementation-history/)** - Feature implementation history
+Two file types define phoneme data for a language, stored in `public/phonemes/`:
+
+### `.phonemes` — Bare Inventory
+
+A flat space-separated list of phonemes. No headers, no sections.
+
+```
+a b d h i j k l m n p r s t w
+```
+
+### `.phonotactics` — Phonotactic Specification
+
+Variables and pattern lines. The phoneme inventory is **derived automatically** from the
+variable definitions — no separate inventory list needed. If this file exists for a language,
+it takes precedence over the `.phonemes` file.
+
+```
+C = [b d h j k l m n p r s t w]
+V = [a i]
+
+CV
+CVC
+V
+```
+
+Optional positions use `(X)` syntax, and `∅` in a variable means "no phoneme here":
+
+```
+I = [∅ b p m f d t n]   # ∅ = no onset consonant
+N = [m n]
+V = [a e i o u]
+
+I V (N)     # onset + vowel + optional nasal coda
+```
 
 ## How It Works
 
@@ -232,7 +300,7 @@ npm run test:watch
 Rules are applied sequentially to transform source words into target words:
 
 ```
-Rules: a > e; e > i;
+Rules: a > e; e > i
 Input: "a"
 Step 1: a → e
 Step 2: e → i
@@ -244,25 +312,17 @@ Output: "i"
 The reverser works through rules in reverse order, exploring all possible source forms:
 
 ```
-Rules: a > x; c > x;
+Rules: a > x; c > x
 Target: "xyx"
-Possible sources: ["aya", "ayc", "cya", "cyc"]
+Possible sources: ["aba", "abc", "cba", "cbc"]
 ```
 
-Phoneme sets constrain the search space - if "x" is not a valid source phoneme, we know it must have been transformed by a rule.
+Phoneme sets constrain the search space — if "x" is not a valid source phoneme, it must have been transformed by a rule.
 
-## Contributing
+## Documentation
 
-Contributions are welcome! Please:
-
-1. Run tests before submitting: `npm test`
-2. Follow the existing code style
-3. Add tests for new features
-4. Update documentation as needed
-
-## License
-
-[Add your license here]
+- **[CLAUDE.md](CLAUDE.md)** - Complete rule syntax reference and project architecture documentation
+- **[docs/implementation-history/](docs/implementation-history/)** - Feature implementation history
 
 ## Technologies
 
@@ -273,4 +333,4 @@ Contributions are welcome! Please:
 
 ---
 
-Built with ❤️ for linguists and language enthusiasts
+Built for linguists and language enthusiasts

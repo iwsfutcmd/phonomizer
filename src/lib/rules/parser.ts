@@ -11,6 +11,8 @@ import type { Rule } from '../types';
  * - With classes: "[a b] > [x y];" (paired mapping: a→x, b→y)
  * - With classes: "[a b] > c;" (both a and b become c)
  * - Classes in context: "a > b / [c d] _;" (expands to two rules)
+ * - Optional groups: "a > b / (c) _;" (expands to two rules: with c, without c)
+ * - Nested optionals: "a > b / (c (d)) _;" (expands to three rules)
  * - Comments: "# This is a comment" (lines starting with # are ignored)
  * - Variables: "C = [p t k];" (define a variable)
  * - Variable usage: "C > x;" (use variable in rules)
@@ -19,6 +21,7 @@ import type { Rule } from '../types';
  * Context notation:
  * - # = word boundary
  * - _ = position of the target phoneme
+ * - (X) = optional element X
  *
  * Class notation:
  * - [a b c] = class containing phonemes a, b, and c
@@ -39,15 +42,13 @@ import type { Rule } from '../types';
 /**
  * Flattens nested class notation into array of phonemes
  * Example: "[a [b c] d]" → ["a", "b", "c", "d"]
- * Treats _ as empty marker (will be undefined in result)
  */
-function flattenNestedClass(str: string): Array<string | undefined> {
+function flattenNestedClass(str: string): string[] {
   const trimmed = str.trim();
 
   // Base case: single phoneme (no brackets)
   if (!trimmed.startsWith('[') || !trimmed.endsWith(']')) {
-    // Treat _ as undefined (empty marker)
-    return trimmed === '_' ? [undefined] : [trimmed];
+    return [trimmed];
   }
 
   // Remove outer brackets
@@ -57,7 +58,7 @@ function flattenNestedClass(str: string): Array<string | undefined> {
   }
 
   // Parse tokens handling nested brackets
-  const result: Array<string | undefined> = [];
+  const result: string[] = [];
   let depth = 0;
   let current = '';
 
@@ -90,9 +91,8 @@ function flattenNestedClass(str: string): Array<string | undefined> {
 /**
  * Extracts phonemes from a class notation [a b c]
  * Returns null if the string is not a SINGLE class (e.g., multiple classes like "[a] [b]" returns null)
- * Treats _ as undefined (empty marker)
  */
-function extractClass(str: string): Array<string | undefined> | null {
+function extractClass(str: string): string[] | null {
   const trimmed = str.trim();
   if (!trimmed.startsWith('[') || !trimmed.endsWith(']')) {
     return null;
@@ -120,60 +120,9 @@ function extractClass(str: string): Array<string | undefined> | null {
 }
 
 /**
- * Checks if a class contains the empty marker _
- */
-function classContainsEmpty(classContent: string): boolean {
-  const phonemes = classContent.split(/\s+/).filter(p => p.length > 0);
-  return phonemes.some(p => p.trim() === '_');
-}
-
-/**
- * Validates that a context with classes containing _ doesn't create vacuous rules
- * Throws an error if all elements in the context can be simultaneously empty
- */
-function validateContextWithEmpty(contextStr: string, contextType: 'left' | 'right', lineNum: number, originalLine: string): void {
-  // Find all classes in the context
-  const classRegex = /\[([^\]]+)\]/g;
-  const matches = Array.from(contextStr.matchAll(classRegex));
-
-  if (matches.length === 0) {
-    return; // No classes, nothing to validate
-  }
-
-  // Check if all classes contain _
-  const classesWithEmpty = matches.filter(m => classContainsEmpty(m[1]));
-
-  if (classesWithEmpty.length === 0) {
-    return; // No classes with _, nothing to validate
-  }
-
-  // Remove all classes from the string to see if there's any non-class content
-  let withoutClasses = contextStr;
-  for (const match of matches) {
-    withoutClasses = withoutClasses.replace(match[0], '');
-  }
-  const hasNonClassContent = withoutClasses.trim().length > 0;
-
-  // Check if all classes have _ (can all be empty simultaneously)
-  const allClassesHaveEmpty = matches.every(m => classContainsEmpty(m[1]));
-
-  // Error if all classes can be empty AND there's no other content
-  if (allClassesHaveEmpty && !hasNonClassContent) {
-    const contextName = contextType === 'left' ? 'left context' : 'right context';
-    throw new Error(
-      `Line ${lineNum}: Vacuous rule - ${contextName} contains only classes with _, ` +
-      `which can all be empty simultaneously, making the rule match cases it shouldn't: "${originalLine}"`
-    );
-  }
-}
-
-/**
  * Expands embedded classes in a string (e.g., "x [a b] y" -> ["x a y", "x b y"])
- * Handles _ as a special marker for "nothing" (empty string)
  */
-function expandEmbeddedClasses(str: string | undefined): string[] {
-  if (!str) return [undefined as any];
-
+function expandEmbeddedClasses(str: string): string[] {
   // Find all classes in the string
   const classRegex = /\[([^\]]+)\]/g;
   const matches = Array.from(str.matchAll(classRegex));
@@ -188,14 +137,11 @@ function expandEmbeddedClasses(str: string | undefined): string[] {
 
   // Process each class match
   for (const match of matches) {
-    const fullMatch = match[0]; // e.g., "[a b _]"
-    const classContent = match[1]; // e.g., "a b _"
+    const fullMatch = match[0]; // e.g., "[a b]"
+    const classContent = match[1]; // e.g., "a b"
 
-    // Extract phonemes from the class, treating _ as empty marker
-    const phonemes = classContent.split(/\s+/).filter(p => p.length > 0).map(p => {
-      const trimmed = p.trim();
-      return trimmed === '_' ? '' : trimmed;
-    });
+    // Extract phonemes from the class
+    const phonemes = classContent.split(/\s+/).filter(p => p.length > 0);
 
     // Expand: for each current result, create variants with each phoneme
     const newResults: string[] = [];
@@ -205,10 +151,140 @@ function expandEmbeddedClasses(str: string | undefined): string[] {
         const expanded = result.replace(fullMatch, phoneme);
         // Clean up extra spaces
         const cleaned = expanded.replace(/\s+/g, ' ').trim();
-        newResults.push(cleaned || undefined as any); // undefined for empty context
+        if (cleaned) newResults.push(cleaned);
       }
     }
     results = newResults;
+  }
+
+  return results;
+}
+
+/**
+ * A parsed segment of a context string
+ */
+interface Segment {
+  type: 'fixed' | 'optional';
+  content: string;
+}
+
+/**
+ * Parses a context string into fixed and optional (parenthesized) segments
+ * Example: "c (d) e" → [{type:'fixed',content:'c'}, {type:'optional',content:'d'}, {type:'fixed',content:'e'}]
+ */
+function parseSegments(context: string): Segment[] {
+  const segments: Segment[] = [];
+  let i = 0;
+  let fixedStart = 0;
+  let depth = 0; // tracks [] depth (prevents treating _ inside [] as position marker)
+
+  while (i < context.length) {
+    const char = context[i];
+    if (char === '[') {
+      depth++;
+      i++;
+    } else if (char === ']') {
+      depth--;
+      i++;
+    } else if (char === '(' && depth === 0) {
+      // Flush fixed content before this (
+      const fixed = context.substring(fixedStart, i).trim();
+      if (fixed) segments.push({ type: 'fixed', content: fixed });
+
+      // Find the matching )
+      let innerDepth = 0;
+      let j = i + 1;
+      while (j < context.length) {
+        if (context[j] === '(' || context[j] === '[') {
+          innerDepth++;
+        } else if (context[j] === ')' || context[j] === ']') {
+          if (innerDepth === 0 && context[j] === ')') break;
+          innerDepth--;
+        }
+        j++;
+      }
+
+      if (j >= context.length) {
+        throw new Error(`Unclosed optional group '(' in context: "${context}"`);
+      }
+
+      const innerContent = context.substring(i + 1, j);
+      segments.push({ type: 'optional', content: innerContent });
+
+      i = j + 1;
+      fixedStart = i;
+    } else {
+      i++;
+    }
+  }
+
+  // Flush remaining fixed content
+  const remaining = context.substring(fixedStart).trim();
+  if (remaining) segments.push({ type: 'fixed', content: remaining });
+
+  return segments;
+}
+
+/**
+ * Expands optional groups (X) in a context string
+ * Returns all variants with/without optional elements
+ *
+ * Examples:
+ * - "(c)" → ["c", undefined]
+ * - "c (d) e" → ["c d e", "c e"]
+ * - "(c) (d)" → ["c d", "c", "d", undefined]
+ * - "(c (d))" → ["c d", "c", undefined]
+ */
+function expandOptionalGroups(context: string): Array<string | undefined> {
+  const segments = parseSegments(context);
+
+  if (segments.length === 0) {
+    return [undefined];
+  }
+
+  const hasOptional = segments.some(s => s.type === 'optional');
+  if (!hasOptional) {
+    const joined = segments.map(s => s.content).join(' ').replace(/\s+/g, ' ').trim();
+    return [joined || undefined];
+  }
+
+  // Generate all combinations (with optional elements before without)
+  let combinations: string[][] = [[]];
+
+  for (const segment of segments) {
+    if (segment.type === 'fixed') {
+      const trimmed = segment.content.trim();
+      if (trimmed) {
+        combinations = combinations.map(c => [...c, trimmed]);
+      }
+    } else {
+      // Optional: recursively expand inner content
+      const innerVariants = expandOptionalGroups(segment.content)
+        .filter((v): v is string => v !== undefined && v.trim() !== '');
+
+      const newCombinations: string[][] = [];
+      for (const combo of combinations) {
+        // With each inner variant (present first)
+        for (const inner of innerVariants) {
+          newCombinations.push([...combo, inner]);
+        }
+        // Without this optional group (absent)
+        newCombinations.push([...combo]);
+      }
+      combinations = newCombinations;
+    }
+  }
+
+  // Convert to strings, deduplicating
+  const seen = new Set<string>();
+  const results: Array<string | undefined> = [];
+
+  for (const parts of combinations) {
+    const joined = parts.filter(p => p.trim()).join(' ').replace(/\s+/g, ' ').trim();
+    if (!seen.has(joined)) {
+      seen.add(joined);
+      results.push(joined || undefined);
+    }
   }
 
   return results;
@@ -226,10 +302,8 @@ function escapeRegex(str: string): string {
  * Returns { name, value } or null if not a variable definition
  */
 function parseVariableDefinition(line: string): { name: string; value: string } | null {
-  // Must end with semicolon
-  if (!line.endsWith(';')) return null;
-
-  const withoutSemicolon = line.slice(0, -1).trim();
+  // Strip optional trailing semicolon
+  const withoutSemicolon = line.endsWith(';') ? line.slice(0, -1).trim() : line.trim();
 
   // Check for '=' sign
   const eqIndex = withoutSemicolon.indexOf('=');
@@ -341,6 +415,7 @@ function substituteVariables(
  * - [a b] > [x y]; → a > x; and b > y; (paired, must be same length)
  * - a > [x y]; → ERROR (class in 'to' requires class in 'from')
  * - a > b / [c d] _; → a > b / c _; and a > b / d _; (context expands)
+ * - a > b / (c) _; → a > b / c _; and a > b / _; (optional group expands)
  */
 function expandRule(baseRule: { from: string; to: string; leftContext?: string; rightContext?: string }, lineNum: number, originalLine: string): Rule[] {
   const fromClass = extractClass(baseRule.from);
@@ -372,10 +447,29 @@ function expandRule(baseRule: { from: string; to: string; leftContext?: string; 
     fromToOptions = [{ from: baseRule.from, to: baseRule.to }];
   }
 
-  // Determine context combinations
-  // First try whole-context classes (legacy), then expand embedded classes
-  const leftContextOptions = leftContextClass || expandEmbeddedClasses(baseRule.leftContext);
-  const rightContextOptions = rightContextClass || expandEmbeddedClasses(baseRule.rightContext);
+  // Determine left context options
+  // If the entire context is a single class [a b], use class expansion (legacy)
+  // Otherwise, expand optional groups first, then any embedded classes
+  let leftContextOptions: Array<string | undefined>;
+  if (leftContextClass) {
+    leftContextOptions = leftContextClass;
+  } else {
+    const optVariants = expandOptionalGroups(baseRule.leftContext ?? '');
+    leftContextOptions = optVariants.flatMap(v =>
+      v === undefined ? [undefined] as Array<string | undefined> : expandEmbeddedClasses(v)
+    );
+  }
+
+  // Determine right context options
+  let rightContextOptions: Array<string | undefined>;
+  if (rightContextClass) {
+    rightContextOptions = rightContextClass;
+  } else {
+    const optVariants = expandOptionalGroups(baseRule.rightContext ?? '');
+    rightContextOptions = optVariants.flatMap(v =>
+      v === undefined ? [undefined] as Array<string | undefined> : expandEmbeddedClasses(v)
+    );
+  }
 
   // Generate Cartesian product of all combinations
   const expandedRules: Rule[] = [];
@@ -384,8 +478,9 @@ function expandRule(baseRule: { from: string; to: string; leftContext?: string; 
     for (const leftContext of leftContextOptions) {
       for (const rightContext of rightContextOptions) {
         // Convert strings to arrays of phonemes
+        // ∅ in the target position means deletion (same as empty target)
         const fromArray = from.split(/\s+/).filter(p => p.length > 0);
-        const toArray = to === '' ? [] : to.split(/\s+/).filter(p => p.length > 0);
+        const toArray = (to === '' || to.trim() === '∅') ? [] : to.split(/\s+/).filter(p => p.length > 0);
 
         // Convert contexts to arrays (undefined stays undefined)
         const leftContextArray = leftContext === undefined
@@ -398,8 +493,8 @@ function expandRule(baseRule: { from: string; to: string; leftContext?: string; 
         expandedRules.push({
           from: fromArray,
           to: toArray,
-          leftContext: leftContextArray,
-          rightContext: rightContextArray
+          leftContext: leftContextArray && leftContextArray.length > 0 ? leftContextArray : undefined,
+          rightContext: rightContextArray && rightContextArray.length > 0 ? rightContextArray : undefined
         });
       }
     }
@@ -424,7 +519,7 @@ function collectAllPhonemes(
     const withoutBrackets = str.replace(/\[|\]/g, ' ');
     // Split by spaces and filter out empty strings and special markers
     const tokens = withoutBrackets.split(/\s+/).filter(t =>
-      t && t !== '_' && t !== '#' && t !== '!' && !t.startsWith('!')
+      t && t !== '_' && t !== '#' && t !== '!' && t !== '∅' && !t.startsWith('!')
     );
     tokens.forEach(t => phonemes.add(t));
   }
@@ -469,8 +564,7 @@ function expandNegativeSet(negativeSet: string, universe: Set<string>): string {
 
   // Get the phonemes to exclude
   // Use flattenNestedClass to handle cases like ![[p t k]] (from variable substitution)
-  const toExcludeArray = flattenNestedClass(`[${content}]`).filter(p => p !== undefined) as string[];
-  const toExclude = new Set(toExcludeArray);
+  const toExclude = new Set(flattenNestedClass(`[${content}]`));
 
   // Compute the complement
   const complement = Array.from(universe).filter(p => !toExclude.has(p));
@@ -571,13 +665,8 @@ export function parseRules(rulesText: string): Rule[] {
     // Expand negative sets
     substituted = expandNegativeSets(substituted, allPhonemes);
 
-    // Check for semicolon
-    if (!substituted.endsWith(';')) {
-      throw new Error(`Line ${lineNum}: Rule must end with semicolon: "${line}"`);
-    }
-
-    // Remove semicolon
-    const rulePart = substituted.slice(0, -1).trim();
+    // Strip optional trailing semicolon
+    const rulePart = substituted.endsWith(';') ? substituted.slice(0, -1).trim() : substituted.trim();
 
     // Check for context (/ separates main rule from context)
     let mainPart: string;
@@ -610,15 +699,15 @@ export function parseRules(rulesText: string): Rule[] {
     let rightContext: string | undefined;
 
     if (contextPart) {
-      // Find the placeholder _ (not inside brackets)
+      // Find the placeholder _ (not inside brackets or parentheses)
       let underscoreIndex = -1;
       let depth = 0;
 
       for (let i = 0; i < contextPart.length; i++) {
         const char = contextPart[i];
-        if (char === '[') {
+        if (char === '[' || char === '(') {
           depth++;
-        } else if (char === ']') {
+        } else if (char === ']' || char === ')') {
           depth--;
         } else if (char === '_' && depth === 0) {
           underscoreIndex = i;
@@ -632,14 +721,6 @@ export function parseRules(rulesText: string): Rule[] {
 
       leftContext = contextPart.substring(0, underscoreIndex).trim();
       rightContext = contextPart.substring(underscoreIndex + 1).trim();
-
-      // Validate contexts with empty markers before converting to undefined
-      if (leftContext && leftContext !== '') {
-        validateContextWithEmpty(leftContext, 'left', lineNum, line);
-      }
-      if (rightContext && rightContext !== '') {
-        validateContextWithEmpty(rightContext, 'right', lineNum, line);
-      }
 
       // Empty string means no context on that side
       if (leftContext === '') leftContext = undefined;

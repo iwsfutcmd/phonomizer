@@ -125,29 +125,29 @@ describe('reverseRules (backward)', () => {
   });
 
   describe('phoneme class integration', () => {
-    it('should reverse class expansion: [a b] > c;', () => {
-      const rules = parseRules('[a b] > c;');
+    it('should reverse class expansion: [a b] > c', () => {
+      const rules = parseRules('[a b] > c');
       // Going backward: 'c' could have been 'a' or 'b'
       const result = reverseRules('c', rules, ['a', 'b'], ['c']);
       expect(result.sort()).toEqual(['a', 'b'].sort());
     });
 
-    it('should reverse paired class mapping: [a b] > [x y];', () => {
-      const rules = parseRules('[a b] > [x y];');
+    it('should reverse paired class mapping: [a b] > [x y]', () => {
+      const rules = parseRules('[a b] > [x y]');
       // x must come from a, y must come from b
       const result = reverseRules('xy', rules, ['a', 'b'], ['x', 'y']);
       expect(result).toEqual(['ab']);
     });
 
     it('should reverse class with context', () => {
-      const rules = parseRules('a > b / [c d] _;');
+      const rules = parseRules('a > b / [c d] _');
       // 'cb' could have been 'ca' (since a becomes b after c)
       const result = reverseRules('cb', rules, ['a', 'c', 'd'], ['a', 'b', 'c', 'd']);
       expect(result).toEqual(['ca']);
     });
 
     it('should generate all possibilities from class merger', () => {
-      const rules = parseRules('[a b c] > x;');
+      const rules = parseRules('[a b c] > x');
       // 'xx' could have been any combination of a, b, c
       const result = reverseRules('xx', rules, ['a', 'b', 'c'], ['x']);
       // 3 * 3 = 9 combinations
@@ -156,7 +156,7 @@ describe('reverseRules (backward)', () => {
     });
 
     it('should handle multi-character phonemes in classes', () => {
-      const rules = parseRules('[th sh] > [θ ʃ];');
+      const rules = parseRules('[th sh] > [θ ʃ]');
       const result = reverseRules('θinkʃarp', rules, ['th', 'sh', 'i', 'n', 'k', 'a', 'r', 'p'], ['θ', 'ʃ', 'i', 'n', 'k', 'a', 'r', 'p']);
       expect(result).toEqual(['thinksharp']);
     });
@@ -164,10 +164,10 @@ describe('reverseRules (backward)', () => {
 
   describe('deletion rules', () => {
     it('should reverse unconditional deletion by inserting at all positions', () => {
-      // Rule: h > ; (h is deleted)
+      // Rule: h > ∅ (h is deleted)
       // Reversing "ello" (tokens: ['e', 'l', 'l', 'o'])
       // Can insert 'h' at positions: 0(hello), 1(ehllo), 2(elhlo), 3(ellho), 4(elloh)
-      const rules: Rule[] = [{ from: ['h'], to: [] }];
+      const rules = parseRules('h > ∅');
       const result = reverseRules('ello', rules, ['h', 'e', 'l', 'o'], ['e', 'l', 'o']);
 
       // Should have 5 insertion possibilities + original (since h is in source phonemes)
@@ -175,9 +175,9 @@ describe('reverseRules (backward)', () => {
     });
 
     it('should reverse deletion with context', () => {
-      // Rule: h > ; / _ #  (h is deleted at word end)
+      // Rule: h > ∅ / _ #  (h is deleted at word end)
       // Reversing "ello" could give: elloh or ello (only at end)
-      const rules: Rule[] = [{ from: ['h'], to: [], rightContext: ['#'] }];
+      const rules = parseRules('h > ∅ / _ #');
       const result = reverseRules('ello', rules, ['h', 'e', 'l', 'o'], ['e', 'l', 'o']);
 
       // Should only insert at the end (where context matches)
@@ -186,9 +186,9 @@ describe('reverseRules (backward)', () => {
     });
 
     it('should reverse multi-phoneme deletion', () => {
-      // Rule: a j > ; (aj sequence is deleted)
+      // Rule: a j > ∅ (aj sequence is deleted)
       // Reversing "bc" could give: bc, ajbc, bajc, bcaj
-      const rules: Rule[] = [{ from: ['a', 'j'], to: [] }];
+      const rules = parseRules('a j > ∅');
       const result = reverseRules('bc', rules, ['a', 'j', 'b', 'c'], ['b', 'c']);
 
       // Can insert 'aj' at positions: 0 (ajbc), 1 (bajc), 2 (bcaj)

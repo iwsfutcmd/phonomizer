@@ -16,271 +16,271 @@
 # ----------------------------------------------------------------------------
 
 # Simple unconditional transformations
-a > e;
-i > u;
-p > b;
+a > e
+i > u
+p > b
 
 # Deletion (empty target)
-x > ;
+x > ∅
 
 # Multi-character phonemes
-th > θ;
-sh > ʃ;
-ts > ʦ;
+th > θ
+sh > ʃ
+ts > ʦ
 
 # ----------------------------------------------------------------------------
 # SECTION 2: CONTEXT-SENSITIVE RULES
 # ----------------------------------------------------------------------------
 
 # Word boundaries
-w > v / # _;
-t > d / _ #;
-s > z / # _ #;
+w > v / # _
+t > d / _ #
+s > z / # _ #
 
 # Phoneme context - left only
-k > g / n _;
-p > b / m _;
+k > g / n _
+p > b / m _
 
 # Phoneme context - right only
-t > s / _ i;
-k > c / _ e;
+t > s / _ i
+k > c / _ e
 
 # Phoneme context - both sides
-a > e / t _ n;
-o > u / p _ t;
+a > e / t _ n
+o > u / p _ t
 
 # Multi-character phonemes in context
-th > ð / # _;
-sh > ʒ / _ #;
+th > ð / # _
+sh > ʒ / _ #
 
 # ----------------------------------------------------------------------------
 # SECTION 3: MULTI-PHONEME SEQUENCES
 # ----------------------------------------------------------------------------
 
 # Contraction (sequence to single)
-a i > e;
-a u > o;
-e a > ɛ;
+a i > e
+a u > o
+e a > ɛ
 
 # Expansion (single to sequence)
-ē > e a;
-ō > o w;
+ē > e a
+ō > o w
 
 # Transformation (sequence to sequence)
-a i > e i;
-a w > a β;
+a i > e i
+a w > a β
 
 # Sequence with context
-a i > e / _ #;
-a u > o / # _;
+a i > e / _ #
+a u > o / # _
 
 # Multi-char phonemes in sequences
-th r > θ r;
-sh t > ʃ t;
+th r > θ r
+sh t > ʃ t
 
 # ----------------------------------------------------------------------------
 # SECTION 4: PHONEME CLASSES - BASIC
 # ----------------------------------------------------------------------------
 
 # Simple class expansion (many to one)
-[p b] > p;
-[t d k g] > t;
+[p b] > p
+[t d k g] > t
 
 # Paired class mapping (positional)
-[p t k] > [b d g];
-[f θ s] > [v ð z];
+[p t k] > [b d g]
+[f θ s] > [v ð z]
 
 # Three-phoneme classes
-[a e i] > [ɑ ɛ ɪ];
+[a e i] > [ɑ ɛ ɪ]
 
 # Multi-character phonemes in classes
-[th sh ch] > [θ ʃ tʃ];
+[th sh ch] > [θ ʃ tʃ]
 
 # ----------------------------------------------------------------------------
 # SECTION 5: PHONEME CLASSES - WITH CONTEXT
 # ----------------------------------------------------------------------------
 
 # Class in left context
-a > ə / [p t k] _;
+a > ə / [p t k] _
 
 # Class in right context
-e > i / _ [m n];
+e > i / _ [m n]
 
 # Classes in both contexts
-a > e / [p t] _ [n m];
+a > e / [p t] _ [n m]
 
 # Class in source with context
-[p t k] > [b d g] / [m n] _;
+[p t k] > [b d g] / [m n] _
 
 # Multiple classes with paired mapping and context
-[p t] > [f θ] / _ [a e];
+[p t] > [f θ] / _ [a e]
 
 # ----------------------------------------------------------------------------
 # SECTION 6: VARIABLES - BASIC DEFINITIONS
 # ----------------------------------------------------------------------------
 
 # Single phoneme variables
-SCHWA = ə;
-GLOTTAL = ʔ;
+SCHWA = ə
+GLOTTAL = ʔ
 
 # Class variables
-VOICELESS_STOPS = [p t k];
-VOICED_STOPS = [b d g];
-NASALS = [m n ŋ];
-VOWELS = [a e i o u];
+VOICELESS_STOPS = [p t k]
+VOICED_STOPS = [b d g]
+NASALS = [m n ŋ]
+VOWELS = [a e i o u]
 
 # Multi-character phoneme variables
-TH_SOUND = θ;
-SH_SOUND = ʃ;
-AFFRICATES = [ts tʃ dʒ];
+TH_SOUND = θ
+SH_SOUND = ʃ
+AFFRICATES = [ts tʃ dʒ]
 
 # ----------------------------------------------------------------------------
 # SECTION 7: VARIABLES - USAGE IN RULES
 # ----------------------------------------------------------------------------
 
 # Variables in source position
-VOICELESS_STOPS > VOICED_STOPS;
+VOICELESS_STOPS > VOICED_STOPS
 
 # Variables in target position with class source (matched lengths)
-[x y z] > [a e i];
+[x y z] > [a e i]
 
 # Variables in context
-SCHWA > a / VOICELESS_STOPS _;
-GLOTTAL > ; / _ NASALS;
+SCHWA > a / VOICELESS_STOPS _
+GLOTTAL > ∅; / _ NASALS
 
 # Variables in all positions
-VOICELESS_STOPS > VOICED_STOPS / NASALS _;
+VOICELESS_STOPS > VOICED_STOPS / NASALS _
 
 # ----------------------------------------------------------------------------
 # SECTION 8: VARIABLES - NESTED REFERENCES
 # ----------------------------------------------------------------------------
 
 # Define base variables
-LABIAL_STOPS = [p b];
-ALVEOLAR_STOPS = [t d];
-VELAR_STOPS = [k g];
+LABIAL_STOPS = [p b]
+ALVEOLAR_STOPS = [t d]
+VELAR_STOPS = [k g]
 
 # Reference other variables (nested classes)
-ALL_STOPS = [LABIAL_STOPS ALVEOLAR_STOPS VELAR_STOPS];
+ALL_STOPS = [LABIAL_STOPS ALVEOLAR_STOPS VELAR_STOPS]
 
 # Use nested variable
-ALL_STOPS > ʔ;
+ALL_STOPS > ʔ
 
 # Multi-level nesting
-VOICELESS_1 = [p t];
-VOICELESS_2 = [k q];
-ALL_VOICELESS = [VOICELESS_1 VOICELESS_2];
-ALL_VOICELESS > h;
+VOICELESS_1 = [p t]
+VOICELESS_2 = [k q]
+ALL_VOICELESS = [VOICELESS_1 VOICELESS_2]
+ALL_VOICELESS > h
 
 # ----------------------------------------------------------------------------
 # SECTION 9: VARIABLES - COMPLEX PATTERNS
 # ----------------------------------------------------------------------------
 
 # Variables with sequences
-DIPHTHONG_1 = a i;
-DIPHTHONG_2 = a u;
-LONG_A = a a;
+DIPHTHONG_1 = a i
+DIPHTHONG_2 = a u
+LONG_A = a a
 
 # Variables in sequence rules
-DIPHTHONG_1 > e;
-DIPHTHONG_2 > o;
-LONG_A > ā;
+DIPHTHONG_1 > e
+DIPHTHONG_2 > o
+LONG_A > ā
 
 # Mixed variables and literals
-VOWELS > SCHWA / _ GLOTTAL;
-NASALS > ; / VOWELS _ VOWELS;
+VOWELS > SCHWA / _ GLOTTAL
+NASALS > ∅; / VOWELS _ VOWELS
 
 # ----------------------------------------------------------------------------
 # SECTION 10: EDGE CASES
 # ----------------------------------------------------------------------------
 
 # Empty target with variables
-GLOTTAL = ʔ;
-GLOTTAL > ;
+GLOTTAL = ʔ
+GLOTTAL > ∅
 
 # Single element classes
-[z] > s;
+[z] > s
 
 # Unicode phonemes
-ɬ > ʃ;
-ɬʼ > ʃʼ;
-[ɣ χ] > [g k];
+ɬ > ʃ
+ɬʼ > ʃʼ
+[ɣ χ] > [g k]
 
 # Complex Unicode in classes
-[ʈ ɖ] > [t d];
+[ʈ ɖ] > [t d]
 
 # Very long classes
-[a ɑ æ ʌ e ɛ ə i ɪ o ɔ u ʊ] > a;
+[a ɑ æ ʌ e ɛ ə i ɪ o ɔ u ʊ] > a
 
 # ----------------------------------------------------------------------------
 # SECTION 11: STRESS TEST - COMBINATIONS
 # ----------------------------------------------------------------------------
 
 # Nested classes directly (no variables)
-[[p b] [t d]] > [f v θ ð];
+[[p b] [t d]] > [f v θ ð]
 
 # Triple-nested
-[[[x]]] > y;
+[[[x]]] > y
 
 # Variables with classes in context
-FRICATIVES = [f s h];
-LIQUIDS = [l r];
-VOWELS > SCHWA / FRICATIVES _ LIQUIDS;
+FRICATIVES = [f s h]
+LIQUIDS = [l r]
+VOWELS > SCHWA / FRICATIVES _ LIQUIDS
 
 # Multiple paired classes
-STOPS_1 = [p t k];
-STOPS_2 = [b d g];
-FRIC_1 = [f θ x];
-FRIC_2 = [v ð ɣ];
-STOPS_1 > FRIC_1;
-STOPS_2 > FRIC_2;
+STOPS_1 = [p t k]
+STOPS_2 = [b d g]
+FRIC_1 = [f θ x]
+FRIC_2 = [v ð ɣ]
+STOPS_1 > FRIC_1
+STOPS_2 > FRIC_2
 
 # Cartesian product of contexts
-[a e] > [o u] / [p t] _ [k s];
+[a e] > [o u] / [p t] _ [k s]
 
 # ----------------------------------------------------------------------------
 # SECTION 12: REAL-WORLD PATTERNS
 # ----------------------------------------------------------------------------
 
 # Lenition chain
-STOPS = [p t k];
-FRICATIVES = [ɸ θ x];
-APPROXIMANTS = [β ð ɣ];
-STOPS > FRICATIVES / VOWELS _ VOWELS;
-FRICATIVES > APPROXIMANTS / VOWELS _ VOWELS;
+STOPS = [p t k]
+FRICATIVES = [ɸ θ x]
+APPROXIMANTS = [β ð ɣ]
+STOPS > FRICATIVES / VOWELS _ VOWELS
+FRICATIVES > APPROXIMANTS / VOWELS _ VOWELS
 
 # Vowel harmony simulation
-FRONT_VOWELS = [i e];
-BACK_VOWELS = [u o];
-CENTRAL = [ə a];
-CENTRAL > FRONT_VOWELS / FRONT_VOWELS [p t k] _;
-CENTRAL > BACK_VOWELS / BACK_VOWELS [p t k] _;
+FRONT_VOWELS = [i e]
+BACK_VOWELS = [u o]
+CENTRAL = [ə a]
+CENTRAL > FRONT_VOWELS / FRONT_VOWELS [p t k] _
+CENTRAL > BACK_VOWELS / BACK_VOWELS [p t k] _
 
 # Assimilation
-VELARS = [k g ŋ];
-ALVEOLARS = [t d n];
-VELARS > ALVEOLARS / _ ALVEOLARS;
+VELARS = [k g ŋ]
+ALVEOLARS = [t d n]
+VELARS > ALVEOLARS / _ ALVEOLARS
 
 # ----------------------------------------------------------------------------
 # SECTION 13: MAXIMUM COMPLEXITY
 # ----------------------------------------------------------------------------
 
 # All features combined
-ONSET = [p t k b d g];
-NUCLEUS = [a e i o u];
-CODA = [m n s t];
-ONSET > [b d g b d g] / # NUCLEUS _ NUCLEUS CODA;
+ONSET = [p t k b d g]
+NUCLEUS = [a e i o u]
+CODA = [m n s t]
+ONSET > [b d g b d g] / # NUCLEUS _ NUCLEUS CODA
 
 # Deeply nested with multiple expansions
-A = [a e];
-B = [i o];
-C = [A B];
-D = [C u];
-E = [D ə];
-F = [p t];
-G = [k q];
-H = [F G];
-E > ə / H _ H;
+A = [a e]
+B = [i o]
+C = [A B]
+D = [C u]
+E = [D ə]
+F = [p t]
+G = [k q]
+H = [F G]
+E > ə / H _ H
 
 # ----------------------------------------------------------------------------
 # END OF STRESS TEST

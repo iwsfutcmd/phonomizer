@@ -130,30 +130,11 @@ function flattenNestedClass(str: string): string[] {
 }
 
 /**
- * Substitutes variables in a pattern
- * Similar to substituteVariables in parser.ts
- */
-function substituteVariables(pattern: string, variables: Map<string, string>): string {
-  let result = pattern;
-
-  for (const [name, value] of variables) {
-    // Replace whole tokens only (using word boundaries)
-    const regex = new RegExp(`\\b${escapeRegex(name)}\\b`, 'g');
-    result = result.replace(regex, value);
-  }
-
-  return result;
-}
-
-function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/**
- * Checks if a word matches a phonotactic pattern
+ * Checks if a word matches a phonotactic pattern.
  *
- * Pattern: "CV" means one phoneme from C, then one phoneme from V
- * Variables like C are substituted first, then parsed as classes
+ * Pattern syntax: space-separated tokens, e.g. "C V" or "I F T"
+ * Each token is either a variable name (expands to its phoneme class)
+ * or a literal phoneme.
  */
 function matchesPattern(
   word: string,
@@ -164,47 +145,20 @@ function matchesPattern(
   // Tokenize the word using greedy longest-match
   const wordTokens = tokenize(word, phonemes);
 
-  // Substitute variables in pattern
-  const substituted = substituteVariables(pattern, variables);
+  // Strip optional trailing semicolon and split pattern into tokens
+  const patternTokens = pattern.replace(/;$/, '').trim().split(/\s+/).filter(t => t);
 
-  // Parse pattern into phoneme classes
-  // Each capital letter or class becomes a slot
-  const slots: string[][] = [];
-  let i = 0;
-
-  while (i < substituted.length) {
-    if (substituted[i] === '[') {
-      // Find matching ]
-      let depth = 1;
-      let j = i + 1;
-      while (j < substituted.length && depth > 0) {
-        if (substituted[j] === '[') depth++;
-        if (substituted[j] === ']') depth--;
-        j++;
-      }
-
-      // Extract class and flatten it
-      const classStr = substituted.substring(i, j);
-      const phonemes = flattenNestedClass(classStr);
-      slots.push(phonemes);
-      i = j;
-    } else if (/\s/.test(substituted[i])) {
-      // Skip whitespace
-      i++;
-    } else {
-      // Single character - treat as a phoneme
-      slots.push([substituted[i]]);
-      i++;
-    }
-  }
-
-  // Check if word matches the pattern
-  if (wordTokens.length !== slots.length) {
+  if (wordTokens.length !== patternTokens.length) {
     return false;
   }
 
   for (let i = 0; i < wordTokens.length; i++) {
-    if (!slots[i].includes(wordTokens[i])) {
+    const token = patternTokens[i];
+    const allowed = variables.has(token)
+      ? flattenNestedClass(variables.get(token)!)
+      : [token];
+
+    if (!allowed.includes(wordTokens[i])) {
       return false;
     }
   }

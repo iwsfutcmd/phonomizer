@@ -3,7 +3,7 @@ import { parseRules } from './parser';
 
 describe('parseRules', () => {
   it('should parse simple rules', () => {
-    const rules = parseRules('a > x;\nb > y;');
+    const rules = parseRules('a > x\nb > y');
     expect(rules).toEqual([
       { from: ['a'], to: ['x'] },
       { from: ['b'], to: ['y'] }
@@ -11,7 +11,7 @@ describe('parseRules', () => {
   });
 
   it('should handle whitespace around >', () => {
-    const rules = parseRules('a>x;\nb  >  y;');
+    const rules = parseRules('a>x\nb  >  y');
     expect(rules).toEqual([
       { from: ['a'], to: ['x'] },
       { from: ['b'], to: ['y'] }
@@ -19,7 +19,7 @@ describe('parseRules', () => {
   });
 
   it('should handle empty lines', () => {
-    const rules = parseRules('a > x;\n\nb > y;\n');
+    const rules = parseRules('a > x\n\nb > y\n');
     expect(rules).toEqual([
       { from: ['a'], to: ['x'] },
       { from: ['b'], to: ['y'] }
@@ -27,7 +27,7 @@ describe('parseRules', () => {
   });
 
   it('should handle comments', () => {
-    const rules = parseRules('# This is a comment\na > x;\n# Another comment\nb > y;');
+    const rules = parseRules('# This is a comment\na > x\n# Another comment\nb > y');
     expect(rules).toEqual([
       { from: ['a'], to: ['x'] },
       { from: ['b'], to: ['y'] }
@@ -35,73 +35,79 @@ describe('parseRules', () => {
   });
 
   it('should allow empty target (deletion)', () => {
-    const rules = parseRules('a > ;');
+    const rules = parseRules('a > ');
     expect(rules).toEqual([{ from: ['a'], to: [] }]);
   });
 
+  it('should allow ∅ as deletion target', () => {
+    const rules = parseRules('a > ∅');
+    expect(rules).toEqual([{ from: ['a'], to: [] }]);
+  });
+
+  it('should allow ∅ deletion with context', () => {
+    const rules = parseRules('h > ∅ / _ #');
+    expect(rules).toEqual([{ from: ['h'], to: [], leftContext: undefined, rightContext: ['#'] }]);
+  });
+
   it('should handle multi-character phonemes', () => {
-    const rules = parseRules('th > x;\nsh > y;');
+    const rules = parseRules('th > x\nsh > y');
     expect(rules).toEqual([
       { from: ['th'], to: ['x'] },
       { from: ['sh'], to: ['y'] }
     ]);
   });
 
-  it('should throw error if semicolon is missing', () => {
-    expect(() => parseRules('a > x')).toThrow('must end with semicolon');
-  });
-
   it('should throw error if > is missing', () => {
-    expect(() => parseRules('a x;')).toThrow('must have format');
+    expect(() => parseRules('a x')).toThrow('must have format');
   });
 
   it('should throw error if source is empty', () => {
-    expect(() => parseRules(' > x;')).toThrow('cannot be empty');
+    expect(() => parseRules(' > x')).toThrow('cannot be empty');
   });
 
   it('should parse rule with left context (word boundary)', () => {
-    const rules = parseRules('w > j / # _;');
+    const rules = parseRules('w > j / # _');
     expect(rules).toEqual([
       { from: ['w'], to: ['j'], leftContext: ['#'], rightContext: undefined }
     ]);
   });
 
   it('should parse rule with right context (word boundary)', () => {
-    const rules = parseRules('t > d / _ #;');
+    const rules = parseRules('t > d / _ #');
     expect(rules).toEqual([
       { from: ['t'], to: ['d'], leftContext: undefined, rightContext: ['#'] }
     ]);
   });
 
   it('should parse rule with both contexts', () => {
-    const rules = parseRules('a > e / b _ c;');
+    const rules = parseRules('a > e / b _ c');
     expect(rules).toEqual([
       { from: ['a'], to: ['e'], leftContext: ['b'], rightContext: ['c'] }
     ]);
   });
 
   it('should parse rule with left phoneme context', () => {
-    const rules = parseRules('k > g / n _;');
+    const rules = parseRules('k > g / n _');
     expect(rules).toEqual([
       { from: ['k'], to: ['g'], leftContext: ['n'], rightContext: undefined }
     ]);
   });
 
   it('should throw error if context missing underscore', () => {
-    expect(() => parseRules('a > x / # #;')).toThrow('must contain _ to mark phoneme position');
+    expect(() => parseRules('a > x / # #')).toThrow('must contain _ to mark phoneme position');
   });
 
   describe('phoneme classes', () => {
-    it('should parse simple class expansion: [a b] > c;', () => {
-      const rules = parseRules('[a b] > c;');
+    it('should parse simple class expansion: [a b] > c', () => {
+      const rules = parseRules('[a b] > c');
       expect(rules).toEqual([
         { from: ['a'], to: ['c'] },
         { from: ['b'], to: ['c'] }
       ]);
     });
 
-    it('should parse paired classes: [a b] > [x y];', () => {
-      const rules = parseRules('[a b] > [x y];');
+    it('should parse paired classes: [a b] > [x y]', () => {
+      const rules = parseRules('[a b] > [x y]');
       expect(rules).toEqual([
         { from: ['a'], to: ['x'] },
         { from: ['b'], to: ['y'] }
@@ -109,7 +115,7 @@ describe('parseRules', () => {
     });
 
     it('should parse class with three phonemes', () => {
-      const rules = parseRules('[a b c] > [x y z];');
+      const rules = parseRules('[a b c] > [x y z]');
       expect(rules).toEqual([
         { from: ['a'], to: ['x'] },
         { from: ['b'], to: ['y'] },
@@ -117,32 +123,32 @@ describe('parseRules', () => {
       ]);
     });
 
-    it('should parse class in left context: a > b / [c d] _;', () => {
-      const rules = parseRules('a > b / [c d] _;');
+    it('should parse class in left context: a > b / [c d] _', () => {
+      const rules = parseRules('a > b / [c d] _');
       expect(rules).toEqual([
         { from: ['a'], to: ['b'], leftContext: ['c'], rightContext: undefined },
         { from: ['a'], to: ['b'], leftContext: ['d'], rightContext: undefined }
       ]);
     });
 
-    it('should parse class in right context: a > b / _ [c d];', () => {
-      const rules = parseRules('a > b / _ [c d];');
+    it('should parse class in right context: a > b / _ [c d]', () => {
+      const rules = parseRules('a > b / _ [c d]');
       expect(rules).toEqual([
         { from: ['a'], to: ['b'], leftContext: undefined, rightContext: ['c'] },
         { from: ['a'], to: ['b'], leftContext: undefined, rightContext: ['d'] }
       ]);
     });
 
-    it('should handle class with multi-character phonemes: [th sh] > [θ ʃ];', () => {
-      const rules = parseRules('[th sh] > [θ ʃ];');
+    it('should handle class with multi-character phonemes: [th sh] > [θ ʃ]', () => {
+      const rules = parseRules('[th sh] > [θ ʃ]');
       expect(rules).toEqual([
         { from: ['th'], to: ['θ'] },
         { from: ['sh'], to: ['ʃ'] }
       ]);
     });
 
-    it('should expand multiple classes: [a b] > [x y] / [c d] _;', () => {
-      const rules = parseRules('[a b] > [x y] / [c d] _;');
+    it('should expand multiple classes: [a b] > [x y] / [c d] _', () => {
+      const rules = parseRules('[a b] > [x y] / [c d] _');
       expect(rules).toEqual([
         { from: ['a'], to: ['x'], leftContext: ['c'], rightContext: undefined },
         { from: ['a'], to: ['x'], leftContext: ['d'], rightContext: undefined },
@@ -152,7 +158,7 @@ describe('parseRules', () => {
     });
 
     it('should expand classes in both contexts', () => {
-      const rules = parseRules('a > b / [c d] _ [e f];');
+      const rules = parseRules('a > b / [c d] _ [e f]');
       expect(rules).toEqual([
         { from: ['a'], to: ['b'], leftContext: ['c'], rightContext: ['e'] },
         { from: ['a'], to: ['b'], leftContext: ['c'], rightContext: ['f'] },
@@ -162,7 +168,7 @@ describe('parseRules', () => {
     });
 
     it('should expand [a b c] > d; to three rules', () => {
-      const rules = parseRules('[a b c] > d;');
+      const rules = parseRules('[a b c] > d');
       expect(rules).toEqual([
         { from: ['a'], to: ['d'] },
         { from: ['b'], to: ['d'] },
@@ -171,7 +177,7 @@ describe('parseRules', () => {
     });
 
     it('should handle whitespace inside classes', () => {
-      const rules = parseRules('[  a   b  ] > [x y];');
+      const rules = parseRules('[  a   b  ] > [x y]');
       expect(rules).toEqual([
         { from: ['a'], to: ['x'] },
         { from: ['b'], to: ['y'] }
@@ -179,19 +185,27 @@ describe('parseRules', () => {
     });
 
     it('should throw error if target is class but source is not', () => {
-      expect(() => parseRules('a > [x y];')).toThrow('Class in target requires class in source');
+      expect(() => parseRules('a > [x y]')).toThrow('Class in target requires class in source');
     });
 
     it('should throw error if class lengths do not match', () => {
-      expect(() => parseRules('[a b] > [x y z];')).toThrow('Class lengths must match');
+      expect(() => parseRules('[a b] > [x y z]')).toThrow('Class lengths must match');
     });
 
     it('should throw error if class is empty', () => {
-      expect(() => parseRules('[] > x;')).toThrow('Class cannot be empty');
+      expect(() => parseRules('[] > x')).toThrow('Class cannot be empty');
     });
 
-    it('should work with deletion: [a b] > ;', () => {
-      const rules = parseRules('[a b] > ;');
+    it('should work with deletion: [a b] > ', () => {
+      const rules = parseRules('[a b] > ');
+      expect(rules).toEqual([
+        { from: ['a'], to: [] },
+        { from: ['b'], to: [] }
+      ]);
+    });
+
+    it('should work with ∅ deletion: [a b] > ∅', () => {
+      const rules = parseRules('[a b] > ∅');
       expect(rules).toEqual([
         { from: ['a'], to: [] },
         { from: ['b'], to: [] }
@@ -199,7 +213,7 @@ describe('parseRules', () => {
     });
 
     it('should handle complex Unicode in classes', () => {
-      const rules = parseRules('[ɬ ɬʼ] > [ʃ dˤ];');
+      const rules = parseRules('[ɬ ɬʼ] > [ʃ dˤ]');
       expect(rules).toEqual([
         { from: ['ɬ'], to: ['ʃ'] },
         { from: ['ɬʼ'], to: ['dˤ'] }
@@ -209,7 +223,7 @@ describe('parseRules', () => {
 
   describe('variables', () => {
     it('should parse simple variable definition and usage', () => {
-      const rules = parseRules('C = [p t k];\nC > x;');
+      const rules = parseRules('C = [p t k]\nC > x');
       expect(rules).toEqual([
         { from: ['p'], to: ['x'] },
         { from: ['t'], to: ['x'] },
@@ -218,7 +232,7 @@ describe('parseRules', () => {
     });
 
     it('should handle single phoneme variables', () => {
-      const rules = parseRules('X = a;\nX > b;');
+      const rules = parseRules('X = a\nX > b');
       expect(rules).toEqual([{ from: ['a'], to: ['b'] }]);
     });
 
@@ -227,12 +241,12 @@ describe('parseRules', () => {
       // But if we want this to work, we'd need to change semantics
       // For now, this is an invalid rule according to class syntax
       expect(() => {
-        parseRules('V = [a e i];\nx > V;');
+        parseRules('V = [a e i]\nx > V');
       }).toThrow('Class in target requires class in source');
     });
 
     it('should allow variables in context', () => {
-      const rules = parseRules('C = [p t];\nV = [a e];\na > b / C _ V;');
+      const rules = parseRules('C = [p t]\nV = [a e]\na > b / C _ V');
       expect(rules).toEqual([
         { from: ['a'], to: ['b'], leftContext: ['p'], rightContext: ['a'] },
         { from: ['a'], to: ['b'], leftContext: ['p'], rightContext: ['e'] },
@@ -271,18 +285,18 @@ describe('parseRules', () => {
 
     it('should detect circular references', () => {
       expect(() => {
-        parseRules('A = B;\nB = A;\nA > x;');
+        parseRules('A = B\nB = A\nA > x');
       }).toThrow('Circular reference');
     });
 
     it('should detect self-referential variables', () => {
       expect(() => {
-        parseRules('A = A;\nA > x;');
+        parseRules('A = A\nA > x');
       }).toThrow('Circular reference');
     });
 
     it('should handle multi-character phonemes in variables', () => {
-      const rules = parseRules('F = [th sh];\nF > x;');
+      const rules = parseRules('F = [th sh]\nF > x');
       expect(rules).toEqual([
         { from: ['th'], to: ['x'] },
         { from: ['sh'], to: ['x'] }
@@ -290,7 +304,7 @@ describe('parseRules', () => {
     });
 
     it('should allow variables with paired class mapping', () => {
-      const rules = parseRules('C = [p t k];\nV = [b d g];\nC > V;');
+      const rules = parseRules('C = [p t k]\nV = [b d g]\nC > V');
       expect(rules).toEqual([
         { from: ['p'], to: ['b'] },
         { from: ['t'], to: ['d'] },
@@ -299,12 +313,12 @@ describe('parseRules', () => {
     });
 
     it('should treat undefined tokens as phonemes', () => {
-      const rules = parseRules('a > b;');
+      const rules = parseRules('a > b');
       expect(rules).toEqual([{ from: ['a'], to: ['b'] }]);
     });
 
     it('should allow variable names that look like phonemes', () => {
-      const rules = parseRules('a = [b c];\na > x;');
+      const rules = parseRules('a = [b c]\na > x');
       expect(rules).toEqual([
         { from: ['b'], to: ['x'] },
         { from: ['c'], to: ['x'] }
@@ -312,7 +326,12 @@ describe('parseRules', () => {
     });
 
     it('should handle deletion rules with variables', () => {
-      const rules = parseRules('X = a;\nX > ;');
+      const rules = parseRules('X = a\nX > ');
+      expect(rules).toEqual([{ from: ['a'], to: [] }]);
+    });
+
+    it('should handle ∅ deletion rules with variables', () => {
+      const rules = parseRules('X = a\nX > ∅');
       expect(rules).toEqual([{ from: ['a'], to: [] }]);
     });
 
@@ -353,7 +372,7 @@ describe('parseRules', () => {
     });
 
     it('should handle nested classes directly (without variables)', () => {
-      const rules = parseRules('[[a b] [c d]] > x;');
+      const rules = parseRules('[[a b] [c d]] > x');
       expect(rules).toEqual([
         { from: ['a'], to: ['x'] },
         { from: ['b'], to: ['x'] },
@@ -380,125 +399,109 @@ describe('parseRules', () => {
     });
 
     it('should not confuse variables with rule syntax', () => {
-      const rules = parseRules('a = b;\na > x;');
+      const rules = parseRules('a = b\na > x');
       expect(rules).toEqual([{ from: ['b'], to: ['x'] }]);
     });
 
     it('should handle variables with special regex characters in names', () => {
-      const rules = parseRules('C+V = [a];\nC+V > x;');
+      const rules = parseRules('C+V = [a]\nC+V > x');
       expect(rules).toEqual([{ from: ['a'], to: ['x'] }]);
     });
   });
 
-  describe('embedded classes with empty marker', () => {
-    it('should expand embedded classes in right context', () => {
-      const rules = parseRules('a > b / _ [d e] f;');
+  describe('embedded classes in context', () => {
+    it('should expand embedded class in right context', () => {
+      const rules = parseRules('a > b / _ [d e] f');
       expect(rules).toEqual([
         { from: ['a'], to: ['b'], leftContext: undefined, rightContext: ['d', 'f'] },
         { from: ['a'], to: ['b'], leftContext: undefined, rightContext: ['e', 'f'] }
       ]);
     });
 
-    it('should handle _ as empty marker in classes', () => {
-      const rules = parseRules('a > b / _ [d e _] f;');
-      expect(rules).toEqual([
-        { from: ['a'], to: ['b'], leftContext: undefined, rightContext: ['d', 'f'] },
-        { from: ['a'], to: ['b'], leftContext: undefined, rightContext: ['e', 'f'] },
-        { from: ['a'], to: ['b'], leftContext: undefined, rightContext: ['f'] }
-      ]);
-    });
-
-    it('should expand embedded classes in left context with non-class content', () => {
-      const rules = parseRules('a > b / c [x y _] _ ;');
+    it('should expand embedded class in left context', () => {
+      const rules = parseRules('a > b / c [x y] _');
       expect(rules).toEqual([
         { from: ['a'], to: ['b'], leftContext: ['c', 'x'], rightContext: undefined },
-        { from: ['a'], to: ['b'], leftContext: ['c', 'y'], rightContext: undefined },
-        { from: ['a'], to: ['b'], leftContext: ['c'], rightContext: undefined }
+        { from: ['a'], to: ['b'], leftContext: ['c', 'y'], rightContext: undefined }
       ]);
     });
 
-    it('should handle multiple embedded classes with non-class content', () => {
-      const rules = parseRules('a > b / c [x _] _ [y _] d;');
+    it('should expand embedded classes in both contexts', () => {
+      const rules = parseRules('a > b / c [x y] _ [p q] d');
       expect(rules).toEqual([
-        { from: ['a'], to: ['b'], leftContext: ['c', 'x'], rightContext: ['y', 'd'] },
-        { from: ['a'], to: ['b'], leftContext: ['c', 'x'], rightContext: ['d'] },
-        { from: ['a'], to: ['b'], leftContext: ['c'], rightContext: ['y', 'd'] },
-        { from: ['a'], to: ['b'], leftContext: ['c'], rightContext: ['d'] }
-      ]);
-    });
-
-    it('should work with embedded class containing only empty marker when there is other content', () => {
-      const rules = parseRules('a > b / _ [_] c;');
-      expect(rules).toEqual([
-        { from: ['a'], to: ['b'], leftContext: undefined, rightContext: ['c'] }
+        { from: ['a'], to: ['b'], leftContext: ['c', 'x'], rightContext: ['p', 'd'] },
+        { from: ['a'], to: ['b'], leftContext: ['c', 'x'], rightContext: ['q', 'd'] },
+        { from: ['a'], to: ['b'], leftContext: ['c', 'y'], rightContext: ['p', 'd'] },
+        { from: ['a'], to: ['b'], leftContext: ['c', 'y'], rightContext: ['q', 'd'] }
       ]);
     });
   });
 
-  describe('vacuous rule validation', () => {
-    it('should allow class with _ when there is non-class content in left context', () => {
-      const rules = parseRules('a > b / c [d e _] _;');
-      expect(rules.length).toBe(3);
+  describe('optional groups in context', () => {
+    it('simple optional left context', () => {
+      const rules = parseRules('a > b / (c) _');
+      expect(rules).toEqual([
+        { from: ['a'], to: ['b'], leftContext: ['c'], rightContext: undefined },
+        { from: ['a'], to: ['b'], leftContext: undefined, rightContext: undefined }
+      ]);
+    });
+
+    it('simple optional right context', () => {
+      const rules = parseRules('a > b / _ (c)');
+      expect(rules).toEqual([
+        { from: ['a'], to: ['b'], leftContext: undefined, rightContext: ['c'] },
+        { from: ['a'], to: ['b'], leftContext: undefined, rightContext: undefined }
+      ]);
+    });
+
+    it('multiple optional elements (Cartesian product)', () => {
+      const rules = parseRules('a > b / (c) _ (d)');
+      expect(rules).toEqual([
+        { from: ['a'], to: ['b'], leftContext: ['c'], rightContext: ['d'] },
+        { from: ['a'], to: ['b'], leftContext: ['c'], rightContext: undefined },
+        { from: ['a'], to: ['b'], leftContext: undefined, rightContext: ['d'] },
+        { from: ['a'], to: ['b'], leftContext: undefined, rightContext: undefined }
+      ]);
+    });
+
+    it('nested optional: (c (d))', () => {
+      const rules = parseRules('a > b / (c (d)) _');
       expect(rules).toEqual([
         { from: ['a'], to: ['b'], leftContext: ['c', 'd'], rightContext: undefined },
-        { from: ['a'], to: ['b'], leftContext: ['c', 'e'], rightContext: undefined },
+        { from: ['a'], to: ['b'], leftContext: ['c'], rightContext: undefined },
+        { from: ['a'], to: ['b'], leftContext: undefined, rightContext: undefined }
+      ]);
+    });
+
+    it('optional multi-phoneme sequence', () => {
+      const rules = parseRules('a > b / (c d) _');
+      expect(rules).toEqual([
+        { from: ['a'], to: ['b'], leftContext: ['c', 'd'], rightContext: undefined },
+        { from: ['a'], to: ['b'], leftContext: undefined, rightContext: undefined }
+      ]);
+    });
+
+    it('optional with class inside', () => {
+      const rules = parseRules('a > b / ([x y]) _');
+      expect(rules).toEqual([
+        { from: ['a'], to: ['b'], leftContext: ['x'], rightContext: undefined },
+        { from: ['a'], to: ['b'], leftContext: ['y'], rightContext: undefined },
+        { from: ['a'], to: ['b'], leftContext: undefined, rightContext: undefined }
+      ]);
+    });
+
+    it('optional combined with fixed', () => {
+      const rules = parseRules('a > b / c (d) _');
+      expect(rules).toEqual([
+        { from: ['a'], to: ['b'], leftContext: ['c', 'd'], rightContext: undefined },
         { from: ['a'], to: ['b'], leftContext: ['c'], rightContext: undefined }
       ]);
-    });
-
-    it('should allow class with _ when there is non-class content in right context', () => {
-      const rules = parseRules('a > b / _ [d e _] c;');
-      expect(rules.length).toBe(3);
-      expect(rules).toEqual([
-        { from: ['a'], to: ['b'], leftContext: undefined, rightContext: ['d', 'c'] },
-        { from: ['a'], to: ['b'], leftContext: undefined, rightContext: ['e', 'c'] },
-        { from: ['a'], to: ['b'], leftContext: undefined, rightContext: ['c'] }
-      ]);
-    });
-
-    it('should error when left context is only a class with _', () => {
-      expect(() => {
-        parseRules('a > b / [d e _] _;');
-      }).toThrow(/Vacuous rule.*left context contains only classes with _/);
-    });
-
-    it('should error when right context is only a class with _', () => {
-      expect(() => {
-        parseRules('a > b / _ [d e _];');
-      }).toThrow(/Vacuous rule.*right context contains only classes with _/);
-    });
-
-    it('should error when left context is multiple classes all with _', () => {
-      expect(() => {
-        parseRules('a > b / [d e _] [f g _] _;');
-      }).toThrow(/Vacuous rule.*left context contains only classes with _/);
-    });
-
-    it('should error when right context is multiple classes all with _', () => {
-      expect(() => {
-        parseRules('a > b / _ [d e _] [f g _];');
-      }).toThrow(/Vacuous rule.*right context contains only classes with _/);
-    });
-
-    it('should allow multiple classes with _ when at least one class has no _', () => {
-      const rules = parseRules('a > b / [x y] [d e _] _;');
-      expect(rules.length).toBe(6); // 2 * 3 = 6 combinations
-    });
-
-    it('should allow multiple classes with _ when there is non-class content', () => {
-      const rules = parseRules('a > b / c [d e _] [f g _] _;');
-      expect(rules.length).toBe(9); // 3 * 3 = 9 combinations
-      // All should have leftContext starting with 'c'
-      rules.forEach(rule => {
-        expect(rule.leftContext).toBeDefined();
-        expect(rule.leftContext![0]).toBe('c');
-      });
     });
   });
 
   describe('negative sets', () => {
     it('should expand simple negative set in left context', () => {
-      const rules = parseRules('a > b / ![p t] _;');
+      const rules = parseRules('a > b / ![p t] _');
       // Should expand to all phonemes except p and t
       // Phonemes in ruleset: a, b, p, t
       // Negative set ![p t] expands to [a b]
@@ -508,7 +511,7 @@ describe('parseRules', () => {
     });
 
     it('should expand negative set in right context', () => {
-      const rules = parseRules('a > b / _ ![x y];');
+      const rules = parseRules('a > b / _ ![x y]');
       // Phonemes: a, b, x, y
       // ![x y] expands to [a b]
       expect(rules.length).toBe(2);
@@ -517,7 +520,7 @@ describe('parseRules', () => {
     });
 
     it('should expand negative set on both sides', () => {
-      const rules = parseRules('a > b / ![p] _ ![q];');
+      const rules = parseRules('a > b / ![p] _ ![q]');
       // Phonemes: a, b, p, q
       // ![p] expands to [a b q]
       // ![q] expands to [a b p]
@@ -525,7 +528,7 @@ describe('parseRules', () => {
     });
 
     it('should work with multi-character phonemes in negative set', () => {
-      const rules = parseRules('a > b / ![th sh] _;');
+      const rules = parseRules('a > b / ![th sh] _');
       // Phonemes: a, b, th, sh
       // ![th sh] expands to [a b]
       expect(rules.length).toBe(2);
@@ -534,7 +537,7 @@ describe('parseRules', () => {
     });
 
     it('should combine negative set with regular class', () => {
-      const rules = parseRules('[a e] > [x y] / ![p t] _;');
+      const rules = parseRules('[a e] > [x y] / ![p t] _');
       // Phonemes: a, e, x, y, p, t
       // ![p t] expands to [a e x y]
       // Combined with [a e] > [x y], we get 2 * 4 = 8 rules
@@ -557,7 +560,7 @@ describe('parseRules', () => {
     });
 
     it('should handle empty negative set (all phonemes)', () => {
-      const rules = parseRules('a > b / ![] _;');
+      const rules = parseRules('a > b / ![] _');
       // Empty negative set expands to all phonemes
       // Phonemes: a, b
       expect(rules.length).toBe(2);
@@ -567,19 +570,19 @@ describe('parseRules', () => {
 
     it('should throw error if negative set excludes all phonemes', () => {
       expect(() => {
-        parseRules('a > b / ![a b] _;');
+        parseRules('a > b / ![a b] _');
       }).toThrow('excludes all phonemes');
     });
 
     it('should handle word boundary in negative set context', () => {
-      const rules = parseRules('a > b / ![#] _;');
+      const rules = parseRules('a > b / ![#] _');
       // Phonemes: a, b, # (but # is filtered out in collectAllPhonemes)
       // So ![#] expands to [a b]
       expect(rules.length).toBe(2);
     });
 
     it('should work in complex context with multiple negative sets', () => {
-      const rules = parseRules('a > b / ![p] _ ![q];');
+      const rules = parseRules('a > b / ![p] _ ![q]');
       // Phonemes: a, b, p, q
       // ![p] expands to [a b q]
       // ![q] expands to [a b p]

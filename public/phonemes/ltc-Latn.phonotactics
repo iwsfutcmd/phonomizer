@@ -1,0 +1,9 @@
+I = [p ph b m t th d n l tr trh dr nr ts tsh dz s z tsr tsrh dzr sr zr tsy tsyh dzy ny sy zy y k kh g ng ʔ x h]
+M = [j jw w]
+N = [a e i ie o u æ ɛ ɛɨ ɨ]
+SC = [j w m n ng wng]
+PC = [p t k wk]
+T = [H X]
+
+I (M) N (SC) (T)
+I (M) N PC
