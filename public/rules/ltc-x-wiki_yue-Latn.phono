@@ -6,8 +6,55 @@ FI = [f2 f4 f7 f8 f21 f24 f28 f59 f60 f66 f68 f106 f108 f136 f146 f148];
 DVI = [i3 i7 i11 i15 i17 i20 i22 i30];
 LI = []
 
+
+# labiodentalization
 [p ph b] > [f fh v] / _ [j jw] [u o ɨ a];
-[b d dr dz z dzr zr dzy zy g h] > [ph th trh tsh s tsrh sy k x] / _ MEDIAL? NUCLEUS CODA? #
+
+# palatal to retroflex
+[tsy tsyh dzy sy zy] > [tsr tsrh dzr sr zr];
+
+zr > dzr;
+
+# affricatization of retroflex
+[tr trh dr] > [tsr tsrh dzr];
+
+
+# aspiration
+#[b d dr dz z dzr zr dzy zy g h] > [ph th trh s tsh tsrh sy k x] / _ MEDIAL? NUCLEUS CODA? #
+
+
+# labialisation_inducing_yue
+#LI = [jw w];
+#LI = j? u [^wng wk w];
+#LI = j o [m p];
+
+# palatalisation_inducing_yue
+#PI = [j jw];
+#PI = w? [i e];
+
+# glide_inducing_yue
+#GI = w e j;
+#GI = w? e [^j];
+
+# to "j" initial
+kh + "j u w" / "j i m" / "i m" / "j i p" / "i p"
+x + "j u w" / "j i m" / "j ɨ n"
+h + LI / GI
+[ʔ h y] + PI
+
+# to "eoi"
+y + jw [e ie] j;
+
+# to "oi"
+ng + w [a o] j
+
+# to _
+ng + u
+
+# to "ou"
+m + "j o" / "j u"
+
+
 
 
 
