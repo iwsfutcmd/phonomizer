@@ -1,10 +1,12 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { parseRules } from './lib/rules/parser';
+  import type { Rule } from './lib/types';
   import { applyRules } from './lib/rules/engine';
   import { reverseRules } from './lib/rules/reverser';
   import { parsePhonemesFile } from './lib/phonotactics/parser';
   import PhonemeExtractor from './lib/components/PhonemeExtractor.svelte';
+  import WordGenerator from './lib/components/WordGenerator.svelte';
 
   interface RulesetData {
     source: string;
@@ -46,7 +48,7 @@
   let inputWord = $state('');
   let sourcePhonemes = $state('');
   let targetPhonemes = $state('');
-  let mode = $state<'forward' | 'backward' | 'cognates'>('forward');
+  let mode = $state<'forward' | 'backward' | 'cognates' | 'generate'>('forward');
   let result = $state<string | string[]>('');
   let error = $state('');
 
@@ -54,6 +56,8 @@
   let sourceLanguage = $state('arb');
   let targetLanguage = $state('hbo');
   let sourceLanguagePhonemes = $state('');
+
+  let selectedRuleset = $derived(rulesets.find(r => r.id === selectedRulesetId));
 
   // Derived: Get available languages from rulesets
   let availableLanguages = $derived(
@@ -165,6 +169,10 @@
 
   // Derived: parse phoneme files including phonotactics
   // Wrapped in try-catch to prevent rendering crashes on invalid input
+  let parsedRules = $derived.by((): Rule[] => {
+    try { return parseRules(rulesText); } catch { return []; }
+  });
+
   let parsedSourcePhonemes = $derived.by(() => {
     try {
       return parsePhonemesFile(sourcePhonemes);
@@ -436,6 +444,7 @@
       <PhonemeExtractor rulesText={rulesText} onUsePhonemes={handleUsePhonemes} />
       {/if}
 
+      {#if mode !== 'generate'}
       <div class="word-section">
         <label for="word">
           <strong>{mode === 'cognates' ? 'Word in Source Language' : mode === 'forward' ? 'Source Word' : 'Target Word'}</strong>
@@ -464,6 +473,7 @@
           </div>
         {/if}
       </div>
+      {/if}
 
       <div class="controls">
         <div class="mode-toggle">
@@ -485,36 +495,56 @@
           >
             ↔ Cognates
           </button>
+          <button
+            class:active={mode === 'generate'}
+            onclick={() => mode = 'generate'}
+          >
+            ⊞ Generate
+          </button>
         </div>
 
+        {#if mode !== 'generate'}
         <button class="apply-btn" onclick={handleApply}>
           {mode === 'cognates' ? 'Find Cognates' : 'Apply Rules'}
         </button>
+        {/if}
       </div>
     </div>
 
     <!-- Results Column -->
     <div class="results-column">
-      <h2>Result{Array.isArray(result) && result.length !== 1 ? 's' : ''}</h2>
+      {#if mode === 'generate'}
+        <WordGenerator
+          sourcePhonotactics={parsedSourcePhonemes.phonotactics}
+          targetPhonotactics={parsedTargetPhonemes.phonotactics}
+          sourceLang={selectedRuleset?.source ?? ''}
+          targetLang={selectedRuleset?.target ?? ''}
+          rules={parsedRules}
+          sourcePhonemeSet={parsedSourcePhonemes.phonemes}
+          targetPhonemeSet={parsedTargetPhonemes.phonemes}
+        />
+      {:else}
+        <h2>Result{Array.isArray(result) && result.length !== 1 ? 's' : ''}</h2>
 
-      {#if error}
-        <div class="error">{error}</div>
-      {:else if result}
-        {#if Array.isArray(result)}
-          {#if result.length === 0}
-            <div class="no-results">No possible inputs found</div>
+        {#if error}
+          <div class="error">{error}</div>
+        {:else if result}
+          {#if Array.isArray(result)}
+            {#if result.length === 0}
+              <div class="no-results">No possible inputs found</div>
+            {:else}
+              <ul class="result-list">
+                {#each result as item}
+                  <li>{item}</li>
+                {/each}
+              </ul>
+            {/if}
           {:else}
-            <ul class="result-list">
-              {#each result as item}
-                <li>{item}</li>
-              {/each}
-            </ul>
+            <div class="result-single">{result}</div>
           {/if}
         {:else}
-          <div class="result-single">{result}</div>
+          <div class="placeholder">Results will appear here</div>
         {/if}
-      {:else}
-        <div class="placeholder">Results will appear here</div>
       {/if}
     </div>
   </div>

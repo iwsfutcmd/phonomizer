@@ -1,19 +1,29 @@
 import type { Rule, PhonotacticPattern } from '../types';
 import { matchesPhonotactics } from '../phonotactics/matcher';
 
-/**
- * Tokenizes a word into phoneme tokens using greedy longest-match
- */
-function tokenize(word: string, phonemes: string[]): string[] {
-  if (word === '') return [];
+// Separator for serializing token arrays. Must not appear in any phoneme text.
+// \x01 (SOH) is safe: IPA, Latin with diacritics, digits, etc. never include it.
+const SEP = '\x01';
 
-  const sortedPhonemes = [...phonemes].sort((a, b) => b.length - a.length);
+function serializeTokens(tokens: string[]): string {
+  return tokens.length === 0 ? '' : tokens.join(SEP);
+}
+
+function deserializeTokens(key: string): string[] {
+  return key === '' ? [] : key.split(SEP);
+}
+
+/**
+ * Tokenizes a word using a pre-sorted phoneme list (longest first).
+ * Callers that tokenize many words with the same phoneme set should sort once
+ * and call this, rather than calling the sort-on-every-call variant.
+ */
+function tokenizeWith(word: string, sortedPhonemes: string[]): string[] {
+  if (word === '') return [];
   const tokens: string[] = [];
   let pos = 0;
-
   while (pos < word.length) {
     let matched = false;
-
     for (const phoneme of sortedPhonemes) {
       if (word.substring(pos, pos + phoneme.length) === phoneme) {
         tokens.push(phoneme);
@@ -22,30 +32,95 @@ function tokenize(word: string, phonemes: string[]): string[] {
         break;
       }
     }
-
     if (!matched) {
       throw new Error(`Cannot tokenize: character(s) at position ${pos} ("${word[pos]}") do not match any phoneme`);
     }
   }
-
   return tokens;
+}
+
+/**
+ * Tokenizes a word into phoneme tokens using greedy longest-match.
+ * Sorts phonemes internally — use tokenizeWith for repeated calls.
+ */
+function tokenize(word: string, phonemes: string[]): string[] {
+  return tokenizeWith(word, [...phonemes].sort((a, b) => b.length - a.length));
+}
+
+/**
+ * Creates a reusable reverser function with shared state pre-computed once.
+ *
+ * Use this when reversing many words with the same rules and phoneme sets.
+ * The returned function caches per-word results, so re-processing the same
+ * word (e.g. on re-analysis without input changes) is O(1).
+ */
+export function createReverser(
+  rules: Rule[],
+  sourcePhonemes: string[],
+  targetPhonemes: string[],
+  sourcePhonotactics?: PhonotacticPattern[] | null,
+  _targetPhonotactics?: PhonotacticPattern[] | null
+): (word: string) => string[] {
+  // Expand source phonemes to include phonemes deleted by deletion rules
+  const allSourcePhonemes = new Set<string>(sourcePhonemes);
+  for (const rule of rules) {
+    if (rule.to.length === 0) rule.from.forEach(p => allSourcePhonemes.add(p));
+  }
+  const expandedSourcePhonemes = Array.from(allSourcePhonemes);
+
+  // Sort phoneme lists once for all tokenization calls
+  const sortedTargetPhonemes = [...targetPhonemes].sort((a, b) => b.length - a.length);
+  const sortedSourcePhonemes = [...expandedSourcePhonemes].sort((a, b) => b.length - a.length);
+
+  // Per-word result cache — survives across re-analysis calls as long as
+  // the same createReverser instance is reused.
+  const cache = new Map<string, string[]>();
+
+  return function reverseWord(word: string): string[] {
+    const cached = cache.get(word);
+    if (cached !== undefined) return cached;
+
+    let possibilityKeys: Set<string> = new Set([
+      serializeTokens(tokenizeWith(word, sortedTargetPhonemes))
+    ]);
+
+    // Apply rules in reverse order
+    for (let i = rules.length - 1; i >= 0; i--) {
+      const rule = rules[i];
+      const newKeys: Set<string> = new Set();
+
+      for (const key of possibilityKeys) {
+        const tokens = deserializeTokens(key);
+        for (const reversed of reverseOneRule(tokens, rule, expandedSourcePhonemes)) {
+          newKeys.add(serializeTokens(reversed));
+        }
+      }
+
+      possibilityKeys = newKeys;
+    }
+
+    // Convert to final words; validate tokenization and phonotactics
+    const results: string[] = [];
+    for (const key of possibilityKeys) {
+      const tokens = deserializeTokens(key);
+      const w = tokens.join('');
+      try {
+        tokenizeWith(w, sortedSourcePhonemes);
+      } catch {
+        continue;
+      }
+      if (sourcePhonotactics && !matchesPhonotactics(tokens, sourcePhonotactics)) continue;
+      results.push(w);
+    }
+    results.sort();
+    cache.set(word, results);
+    return results;
+  };
 }
 
 /**
  * Applies phonological rules in reverse to find all possible source words
  * that could have produced the given target word.
- *
- * With phoneme sets, we can constrain the search space:
- * - Only consider reversals that result in valid source phonemes
- * - A target phoneme can only be "left as-is" if it exists in the source phoneme set
- *
- * @param word - The target word to reverse
- * @param rules - Array of rules that were applied
- * @param sourcePhonemes - Valid phonemes in the source language
- * @param targetPhonemes - Valid phonemes in the target language
- * @param sourcePhonotactics - Optional phonotactic patterns for the source language
- * @param targetPhonotactics - Optional phonotactic patterns for the target language
- * @returns Array of all possible source words
  */
 export function reverseRules(
   word: string,
@@ -55,98 +130,27 @@ export function reverseRules(
   sourcePhonotactics?: PhonotacticPattern[] | null,
   targetPhonotactics?: PhonotacticPattern[] | null
 ): string[] {
-  // Collect phonemes from deletion rules (they're valid source phonemes even if not listed)
-  // For deletion rules, the 'from' phoneme must have existed in the source language
-  const allSourcePhonemes = new Set<string>(sourcePhonemes);
-  for (const rule of rules) {
-    if (rule.to.length === 0) {
-      // Deletion rule: add 'from' phonemes as valid source phonemes
-      rule.from.forEach(p => allSourcePhonemes.add(p));
-    }
-  }
-  const expandedSourcePhonemes = Array.from(allSourcePhonemes);
-
-  // Tokenize the target word
-  let possibilityTokens: Set<string> = new Set([JSON.stringify(tokenize(word, targetPhonemes))]);
-
-  // Apply rules in reverse order
-  for (let i = rules.length - 1; i >= 0; i--) {
-    const rule = rules[i];
-    const newPossibilities: Set<string> = new Set();
-
-    // For each current possibility, find all ways to reverse this rule
-    for (const current of possibilityTokens) {
-      const tokens = JSON.parse(current) as string[];
-      const reversed = reverseOneRule(tokens, rule, expandedSourcePhonemes);
-      reversed.forEach(r => newPossibilities.add(JSON.stringify(r)));
-    }
-
-    possibilityTokens = newPossibilities;
-  }
-
-  // Convert token arrays back to strings and filter to only valid source words
-  const validPossibilities = Array.from(possibilityTokens).map(p => {
-    const tokens = JSON.parse(p) as string[];
-    return { word: tokens.join(''), tokens };
-  }).filter(({ word: w, tokens }) => {
-    try {
-      tokenize(w, expandedSourcePhonemes);
-    } catch {
-      return false;
-    }
-    // Filter by source phonotactics if provided
-    if (sourcePhonotactics && !matchesPhonotactics(tokens, sourcePhonotactics)) {
-      return false;
-    }
-    return true;
-  }).map(({ word: w }) => w);
-
-  return validPossibilities.sort();
+  return createReverser(rules, sourcePhonemes, targetPhonemes, sourcePhonotactics, targetPhonotactics)(word);
 }
 
 /**
- * Reverses a single rule application on token arrays
- *
- * Given a token array that has had rule applied to it, find all possible
- * pre-images (token arrays before the rule was applied).
- *
- * For rule "a > x", if we have ["x", "y", "x"], we need to find all positions
- * where "x" appears and consider that each "x" could have been:
- * 1. Transformed from "a" by this rule
- * 2. Was already "x" before this rule (not transformed)
- *
- * For rule "a j > e" (multi-phoneme source), if we have ["e", "y"], we consider
- * that "e" could have been transformed from the sequence ["a", "j"].
- *
- * For rule "a j > a j" (identity with sequence), we need to match the sequence
- * ["a", "j"] in the tokens and consider it could have come from ["a", "j"].
- *
- * We generate ALL combinations and filter invalid ones at the end.
+ * Reverses a single rule application on token arrays.
  */
 function reverseOneRule(tokens: string[], rule: Rule, sourcePhonemes: string[]): string[][] {
   const { from, to, leftContext, rightContext } = rule;
-
   const toLength = to.length;
 
-  // Special case: deletion rule (from -> empty)
-  // Reversing deletion is insertion, which can happen at any position
+  // Deletion rule (from → empty): reversing is insertion at all valid positions
   if (to.length === 0) {
     const results: string[][] = [];
 
-    // The word could exist as-is (the phoneme was never there)
-    // Only if the phoneme is in the source phoneme set
     const fromPhonemeInSource = from.every(p => sourcePhonemes.includes(p));
     if (fromPhonemeInSource) {
       results.push(tokens);
     }
 
-    // Try inserting the deleted phoneme(s) at each valid position
     for (let i = 0; i <= tokens.length; i++) {
-      // Check if this position matches the context
-      // For deletion rule, context is checked AFTER insertion
       const testTokens = [...tokens.slice(0, i), ...from, ...tokens.slice(i)];
-
-      // The inserted sequence starts at position i
       if (matchesContextForSequence(testTokens, i, from.length, leftContext, rightContext)) {
         results.push(testTokens);
       }
@@ -155,53 +159,39 @@ function reverseOneRule(tokens: string[], rule: Rule, sourcePhonemes: string[]):
     return results;
   }
 
-  // Find all positions where the target sequence appears
+  // Find all positions where the target sequence appears in the token array
   const positions: number[] = [];
-
   for (let i = 0; i <= tokens.length - toLength; i++) {
-    // Check if the target sequence matches at position i
     let sequenceMatches = true;
     for (let j = 0; j < toLength; j++) {
-      if (tokens[i + j] !== to[j]) {
-        sequenceMatches = false;
-        break;
-      }
+      if (tokens[i + j] !== to[j]) { sequenceMatches = false; break; }
     }
-
-    if (sequenceMatches) {
-      // Check if this position matches the context
-      if (matchesContextForSequence(tokens, i, toLength, leftContext, rightContext)) {
-        positions.push(i);
-      }
+    if (sequenceMatches && matchesContextForSequence(tokens, i, toLength, leftContext, rightContext)) {
+      positions.push(i);
     }
   }
 
-  // If target doesn't appear in tokens, no reversal needed
-  if (positions.length === 0) {
-    return [tokens];
-  }
+  if (positions.length === 0) return [tokens];
 
-  // Generate all possible combinations: each occurrence can be replaced or left as-is
+  // Map from token position → positions-array index for O(1) lookup
+  const positionMap = new Map<number, number>(positions.map((pos, idx) => [pos, idx]));
+
   const results: string[][] = [];
-  const numCombinations = Math.pow(2, positions.length);
+  const numCombinations = 1 << positions.length; // 2^n
 
   for (let mask = 0; mask < numCombinations; mask++) {
     const result: string[] = [];
     let i = 0;
-
     while (i < tokens.length) {
-      const posIndex = positions.indexOf(i);
-
-      if (posIndex !== -1 && (mask & (1 << posIndex))) {
-        // Replace this occurrence with the source sequence
+      const posIndex = positionMap.get(i);
+      if (posIndex !== undefined && (mask & (1 << posIndex))) {
         result.push(...from);
-        i += toLength; // Skip the target sequence
+        i += toLength;
       } else {
         result.push(tokens[i]);
         i++;
       }
     }
-
     results.push(result);
   }
 
@@ -217,19 +207,14 @@ function matchesContextTokens(
   leftContext: string[] | undefined,
   rightContext: string[] | undefined
 ): boolean {
-  // Check left context
   if (leftContext !== undefined) {
     if (leftContext.length === 1 && leftContext[0] === '#') {
-      // Must be at word beginning
       if (position !== 0) return false;
     } else {
-      // Must be preceded by the entire left context sequence
       const contextLength = leftContext.length;
       if (position >= contextLength) {
         for (let j = 0; j < contextLength; j++) {
-          if (tokens[position - contextLength + j] !== leftContext[j]) {
-            return false;
-          }
+          if (tokens[position - contextLength + j] !== leftContext[j]) return false;
         }
       } else {
         return false;
@@ -237,19 +222,14 @@ function matchesContextTokens(
     }
   }
 
-  // Check right context
   if (rightContext !== undefined) {
     if (rightContext.length === 1 && rightContext[0] === '#') {
-      // Must be at word end
       if (position !== tokens.length - 1) return false;
     } else {
-      // Must be followed by the entire right context sequence
       const contextLength = rightContext.length;
       if (position + 1 + contextLength <= tokens.length) {
         for (let j = 0; j < contextLength; j++) {
-          if (tokens[position + 1 + j] !== rightContext[j]) {
-            return false;
-          }
+          if (tokens[position + 1 + j] !== rightContext[j]) return false;
         }
       } else {
         return false;
@@ -270,19 +250,14 @@ function matchesContextForSequence(
   leftContext: string[] | undefined,
   rightContext: string[] | undefined
 ): boolean {
-  // Check left context (relative to the start of the sequence)
   if (leftContext !== undefined) {
     if (leftContext.length === 1 && leftContext[0] === '#') {
-      // Must be at word beginning
       if (position !== 0) return false;
     } else {
-      // Must be preceded by the entire left context sequence
       const contextLength = leftContext.length;
       if (position >= contextLength) {
         for (let j = 0; j < contextLength; j++) {
-          if (tokens[position - contextLength + j] !== leftContext[j]) {
-            return false;
-          }
+          if (tokens[position - contextLength + j] !== leftContext[j]) return false;
         }
       } else {
         return false;
@@ -290,19 +265,14 @@ function matchesContextForSequence(
     }
   }
 
-  // Check right context (relative to the end of the sequence)
   if (rightContext !== undefined) {
     if (rightContext.length === 1 && rightContext[0] === '#') {
-      // Must be at word end
       if (position + sequenceLength !== tokens.length) return false;
     } else {
-      // Must be followed by the entire right context sequence
       const contextLength = rightContext.length;
       if (position + sequenceLength + contextLength <= tokens.length) {
         for (let j = 0; j < contextLength; j++) {
-          if (tokens[position + sequenceLength + j] !== rightContext[j]) {
-            return false;
-          }
+          if (tokens[position + sequenceLength + j] !== rightContext[j]) return false;
         }
       } else {
         return false;
@@ -312,3 +282,6 @@ function matchesContextForSequence(
 
   return true;
 }
+
+// Suppress unused-variable warning for matchesContextTokens (kept for API surface)
+void matchesContextTokens;
